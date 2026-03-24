@@ -11,10 +11,9 @@
     <div class="shell">
       <header class="hero">
         <div>
-          <p class="eyebrow">Phase 1</p>
           <h1>Pure DNA Explorer</h1>
           <p class="lede">
-            Filterable residue-level statistics across the full pure-DNA pool,
+            Filterable DNA parameter statistics across the full pure-DNA pool,
             backed by local PDB-derived tables and loaded on demand from split
             `TSV.gz` family files.
           </p>
@@ -28,7 +27,7 @@
         <div class="panel-head">
           <h2>Universe Snapshot</h2>
           <p>
-            Base universe, method mix, form mix, and cleanliness tiers derived
+            Master-pool PDB counts plus precomputed family row totals derived
             from the local pure-DNA pool.
           </p>
         </div>
@@ -126,9 +125,9 @@
         <div class="panel-head">
           <h2>Distribution View</h2>
           <p>
-            The current family file is cached client-side. Histogram bins and
-            summary metrics are recomputed from typed arrays without rebuilding
-            large filtered value lists.
+            The current family file is cached client-side. PDB-level filters
+            decide which entries are eligible; plotted observations are then
+            counted from the current parameter and display window.
           </p>
         </div>
 
@@ -138,11 +137,11 @@
             <span class="stat-value" id="filteredPdbCount">-</span>
           </div>
           <div class="stat-box">
-            <span class="stat-label">Visible observations</span>
+            <span class="stat-label">Plotted observations</span>
             <span class="stat-value" id="filteredObservationCount">-</span>
           </div>
           <div class="stat-box">
-            <span class="stat-label">Loaded family rows</span>
+            <span class="stat-label">Current family rows</span>
             <span class="stat-value" id="loadedFamilyRows">-</span>
           </div>
           <div class="stat-box">

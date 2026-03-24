@@ -610,7 +610,7 @@ function renderOverviewCards() {
     },
     {
       kind: "Cleanliness",
-      title: "Local hetero tiers",
+      title: "PDB counts by HET policy",
       lines: [
         `Conservative ${formatInt(universe.cleanliness.conservative)}`,
         `Relaxed ${formatInt(universe.cleanliness.relaxed)} / <=100 Da ${formatInt(universe.cleanliness.mw100)}`,
@@ -618,7 +618,7 @@ function renderOverviewCards() {
     },
     {
       kind: "Files",
-      title: "Loaded families",
+      title: "Precomputed family rows",
       lines: [
         `Backbone ${formatInt(state.manifest.families.backbone.row_count)} / Sugar ${formatInt(state.manifest.families.sugar_torsion.row_count)} / Pucker ${formatInt(state.manifest.families.pucker.row_count)}`,
         `Base pair ${formatInt(state.manifest.families.base_pair.row_count)} / Step ${formatInt(state.manifest.families.step.row_count)} / Helical ${formatInt(state.manifest.families.helical.row_count)}`,
@@ -1048,8 +1048,9 @@ async function renderPlot() {
   });
 
   setStatus(
-    `Loaded ${currentFamilyMeta().display_name}: ${formatInt(familyData.rowCount)} rows cached. ` +
-    `${formatInt(allowed.total)} PDB entries and ${formatInt(accumulation.totalVisibleObservations)} visible observations after filtering.`,
+    `${currentFamilyMeta().display_name}: ${formatInt(familyData.rowCount)} total family rows cached. ` +
+    `${formatInt(allowed.total)} PDB entries pass the current PDB-level filters. ` +
+    `${formatInt(accumulation.totalVisibleObservations)} plotted observations remain for the current parameter and display window.`,
   );
 }
 

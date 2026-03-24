@@ -24,6 +24,7 @@ const state = {
   methods: new Set(["xray", "nmr"]),
   resolution: "any",
   forms: new Set(Object.keys(FORM_META)),
+  contexts: new Set(),
   terminalPolicy: "include",
   circularMode: "auto",
   universeTableOpen: false,
@@ -376,13 +377,17 @@ function universeRowsSorted() {
   return state.universeSortedRows;
 }
 
-function parseFamilyTable(text, familyId, paramIds, maxPid) {
+function parseFamilyTable(text, familyMeta, maxPid) {
   const lines = parseTsvLines(text);
   const header = lines[0].split("\t");
   const indexOf = Object.fromEntries(header.map((key, index) => [key, index]));
   const rowCount = Math.max(0, lines.length - 1);
+  const familyId = familyMeta.family_id;
+  const paramIds = familyMeta.param_ids;
   const pid = new Uint32Array(rowCount);
   const edgeFlag = new Uint8Array(rowCount);
+  const contextColumn = familyMeta.context_column ?? null;
+  const context = contextColumn ? new Array(rowCount) : null;
   const values = Object.fromEntries(paramIds.map((paramId) => [paramId, new Float32Array(rowCount)]));
   const pidStart = new Int32Array(maxPid + 1).fill(-1);
   const pidCount = new Uint32Array(maxPid + 1);
@@ -393,6 +398,7 @@ function parseFamilyTable(text, familyId, paramIds, maxPid) {
     const rowPid = parseIntSafe(cols[indexOf.pid]);
     pid[rowIndex] = rowPid;
     edgeFlag[rowIndex] = edgeIndex !== undefined ? parseIntSafe(cols[edgeIndex]) : 0;
+    if (context) context[rowIndex] = String(cols[indexOf[contextColumn]] ?? "").trim();
     if (pidStart[rowPid] === -1) pidStart[rowPid] = rowIndex;
     pidCount[rowPid] += 1;
     for (const paramId of paramIds) {
@@ -407,6 +413,7 @@ function parseFamilyTable(text, familyId, paramIds, maxPid) {
     pidStart,
     pidCount,
     edgeFlag,
+    context,
     values,
   };
 }
@@ -421,6 +428,14 @@ function currentParameterMeta(paramId = state.parameterId) {
 
 function formOptions() {
   return state.manifest?.controls?.form_options ?? [];
+}
+
+function currentContextOptions() {
+  return currentFamilyMeta()?.context_options ?? [];
+}
+
+function currentContextLabel() {
+  return currentFamilyMeta()?.context_label ?? "Sequence Context";
 }
 
 function selectedFormIds() {
@@ -440,6 +455,22 @@ function selectedFormsLabel() {
     .filter((item) => state.forms.has(item.id))
     .map((item) => item.label);
   return selected.length ? selected.join(", ") : "None";
+}
+
+function selectedContextsLabel() {
+  const options = currentContextOptions();
+  if (!options.length) return "-";
+  const selected = options
+    .filter((item) => state.contexts.has(item.id))
+    .map((item) => item.label);
+  if (!selected.length) return "None";
+  if (selected.length === options.length) return `All ${options.length}`;
+  if (selected.length <= 4) return selected.join(", ");
+  return `${selected.length} selected`;
+}
+
+function resetContextsForFamily() {
+  state.contexts = new Set(currentContextOptions().map((item) => item.id));
 }
 
 function passesCleanliness(row) {
@@ -480,6 +511,12 @@ function buildAllowedPidMask() {
   return { mask, total };
 }
 
+function rowPassesObservationFilters(familyData, rowIndex) {
+  if (state.terminalPolicy === "exclude" && familyData.edgeFlag[rowIndex] === 1) return false;
+  if (familyData.context && !state.contexts.has(familyData.context[rowIndex])) return false;
+  return true;
+}
+
 function initAccumulator(paramMeta, bins) {
   return {
     bins,
@@ -513,7 +550,6 @@ function addValueToAccumulator(acc, paramMeta, value, pid, range) {
   if (!range || !Number.isFinite(range[0]) || !Number.isFinite(range[1]) || range[1] <= range[0]) {
     return false;
   }
-  if (value < range[0] || value > range[1]) return false;
   const width = (range[1] - range[0]) / acc.bins;
   let binIndex = Math.floor((value - range[0]) / width);
   if (binIndex < 0) binIndex = 0;
@@ -555,7 +591,9 @@ function finalizeAccumulator(acc, paramMeta, range, displayCut = 0, shiftBins = 
     const meanAngle = acc.n
       ? wrapCircular(Math.atan2(acc.sumSin, acc.sumCos) * 180 / Math.PI, paramMeta.period ?? 360)
       : null;
-    const resultant = acc.n ? Math.hypot(acc.sumCos, acc.sumSin) / acc.n : null;
+    const resultant = acc.n
+      ? Math.max(0, Math.min(1, Math.hypot(acc.sumCos, acc.sumSin) / acc.n))
+      : null;
     const circularStd = (resultant && resultant > 0)
       ? Math.sqrt(-2 * Math.log(resultant)) * 180 / Math.PI
       : null;
@@ -601,7 +639,7 @@ function accumulateVisibleSeries(familyData, allowedPidMask, paramId, paramMeta,
       if (start < 0 || !count) continue;
       for (let offset = 0; offset < count; offset += 1) {
         const rowIndex = start + offset;
-        if (state.terminalPolicy === "exclude" && familyData.edgeFlag[rowIndex] === 1) continue;
+        if (!rowPassesObservationFilters(familyData, rowIndex)) continue;
         const value = familyData.values[paramId][rowIndex];
         const accepted = addValueToAccumulator(seriesAcc[formId], paramMeta, value, row.pid, range);
         if (accepted) totalVisibleObservations += 1;
@@ -698,7 +736,7 @@ function cleanlinessLabel(row) {
 
 function resolutionLabel(row) {
   if (!row.resolutionKnown || !Number.isFinite(row.resolution)) return "-";
-  return `${formatFloat(row.resolution, 2)} A`;
+  return `${formatFloat(row.resolution, 2)} Å`;
 }
 
 function rcsbStructureUrl(pdbId) {
@@ -866,6 +904,14 @@ function bindControls() {
     renderFiltersAndPlot();
   });
 
+  el("contextGroupTitle").textContent = currentContextLabel();
+  renderMultiChoiceGroup("contextGroup", currentContextOptions(), state.contexts, (contextId) => {
+    if (state.contexts.has(contextId) && state.contexts.size === 1) return;
+    if (state.contexts.has(contextId)) state.contexts.delete(contextId);
+    else state.contexts.add(contextId);
+    renderFiltersAndPlot();
+  });
+
   renderSingleChoiceGroup("terminalGroup", state.manifest.controls.terminal_policy_options, state.terminalPolicy, (nextId) => {
     state.terminalPolicy = nextId;
     renderFiltersAndPlot();
@@ -879,7 +925,8 @@ function bindControls() {
   el("familySelect").onchange = async (event) => {
     state.familyId = event.target.value;
     state.parameterId = currentFamilyMeta().param_ids[0];
-    syncSelectors();
+    resetContextsForFamily();
+    renderFilters();
     await renderPlot();
   };
 
@@ -899,7 +946,7 @@ async function ensureFamilyLoaded(familyId) {
   if (state.familyCache.has(familyId)) return state.familyCache.get(familyId);
   const familyMeta = state.manifest.families[familyId];
   const text = await fetchTextMaybeGzip(`./assets/pure_dna/${pathFromRelative(familyMeta.file)}`);
-  const parsed = parseFamilyTable(text, familyId, familyMeta.param_ids, state.pdbManifest.maxPid);
+  const parsed = parseFamilyTable(text, familyMeta, state.pdbManifest.maxPid);
   state.familyCache.set(familyId, parsed);
   return parsed;
 }
@@ -908,11 +955,45 @@ function pathFromRelative(relativePath) {
   return String(relativePath || "").replace(/^\.\//, "");
 }
 
-function parameterRange(paramMeta, familyData = null, paramId = null) {
-  if (paramMeta.display_range_default) return paramMeta.display_range_default;
+function computeEffectiveRange(paramMeta, familyData = null, paramId = null, allowedPidMask = null) {
   if (paramMeta.isCircular) return [0, paramMeta.period ?? 360];
-  if (familyData && paramId) return inferLinearRange(familyData, paramId);
-  return [0, 1];
+
+  const defaultRange = paramMeta.display_range_default ?? null;
+  if (!familyData || !paramId || !allowedPidMask) {
+    return defaultRange ?? [0, 1];
+  }
+
+  const values = familyData.values[paramId];
+  let min = Infinity;
+  let max = -Infinity;
+  for (let rowIndex = 0; rowIndex < familyData.rowCount; rowIndex += 1) {
+    const pid = familyData.pid[rowIndex];
+    if (!allowedPidMask[pid]) continue;
+    if (!rowPassesObservationFilters(familyData, rowIndex)) continue;
+    const value = values[rowIndex];
+    if (!Number.isFinite(value)) continue;
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return defaultRange ?? inferLinearRange(familyData, paramId);
+  }
+
+  let dataRange;
+  if (Math.abs(max - min) < 1e-9) {
+    const pad = Math.max(0.5, Math.abs(max) * 0.1);
+    dataRange = [min - pad, max + pad];
+  } else {
+    const pad = Math.max((max - min) * 0.05, 0.5);
+    dataRange = [min - pad, max + pad];
+  }
+
+  if (!defaultRange) return dataRange;
+  return [
+    Math.min(defaultRange[0], dataRange[0]),
+    Math.max(defaultRange[1], dataRange[1]),
+  ];
 }
 
 function buildTrace(formId, seriesData, paramMeta) {
@@ -1023,7 +1104,7 @@ function renderFamilyOverview(familyData, allowedMask) {
 
   for (const paramId of familyMeta.param_ids) {
     const paramMeta = currentParameterMeta(paramId);
-    const range = parameterRange(paramMeta, familyData, paramId);
+    const range = computeEffectiveRange(paramMeta, familyData, paramId, allowedMask);
     const accumulation = accumulateVisibleSeries(familyData, allowedMask, paramId, paramMeta, range);
     const totalRows = Object.values(accumulation.series).reduce((sum, entry) => sum + entry.summary.n, 0);
 
@@ -1041,7 +1122,8 @@ function renderFamilyOverview(familyData, allowedMask) {
     panel.addEventListener("click", async () => {
       state.parameterId = paramId;
       syncSelectors();
-      await renderPlot();
+      updateMiniPanelSelection();
+      await renderPlot({ skipOverview: true });
     });
     root.appendChild(panel);
 
@@ -1063,6 +1145,7 @@ function updateStats(allowed, familyData, accumulation) {
   el("loadedFamilyRows").textContent = formatInt(familyData.rowCount);
   el("currentFormScope").textContent = selectedFormsLabel();
   el("currentMethodScope").textContent = selectedMethodsLabel();
+  el("currentContextScope").textContent = selectedContextsLabel();
 }
 
 function buildLayout(paramMeta, range, displayCut = 0, axisMode = "auto") {
@@ -1105,8 +1188,8 @@ async function renderPlot(options = {}) {
   const { skipOverview = false } = options;
   const familyData = await ensureFamilyLoaded(state.familyId);
   const paramMeta = currentParameterMeta();
-  const range = parameterRange(paramMeta, familyData, state.parameterId);
   const allowed = buildAllowedPidMask();
+  const range = computeEffectiveRange(paramMeta, familyData, state.parameterId, allowed.mask);
   const accumulation = accumulateVisibleSeries(familyData, allowed.mask, state.parameterId, paramMeta, range);
   const traces = Object.entries(accumulation.series)
     .filter(([, seriesData]) => seriesData.summary.n > 0)
@@ -1145,13 +1228,14 @@ async function renderFiltersAndPlot() {
 async function boot() {
   state.manifest = await fetchJson(MANIFEST_PATH);
   state.parameterMetaById = buildParameterMeta(state.manifest);
+  state.familyId = state.manifest.defaults.family_id;
+  state.parameterId = state.manifest.defaults.parameter_id;
   state.cleanliness = state.manifest.defaults.cleanliness;
   state.methods = new Set(state.manifest.defaults.methods);
   state.resolution = state.manifest.defaults.resolution;
   state.forms = new Set(state.manifest.defaults.forms ?? formOptions().map((item) => item.id));
+  resetContextsForFamily();
   state.terminalPolicy = state.manifest.defaults.terminal_policy;
-  state.familyId = state.manifest.defaults.family_id;
-  state.parameterId = state.manifest.defaults.parameter_id;
 
   const pdbManifestText = await fetchTextMaybeGzip(`./assets/pure_dna/${pathFromRelative(state.manifest.file_map.pdb_manifest)}`);
   state.pdbManifest = parsePdbManifest(pdbManifestText);

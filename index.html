@@ -69,8 +69,8 @@
         <div class="panel-head">
           <h2>Filter Stack</h2>
           <p>
-            PDB-level filters are applied first. Terminal policy is applied only
-            at the observation layer.
+            PDB-level filters are applied first. Sequence context and terminal
+            policy are applied only at the observation layer.
           </p>
         </div>
 
@@ -93,6 +93,11 @@
           <div class="filter-cluster">
             <span class="cluster-title">Form</span>
             <div id="formGroup" class="toggle-group"></div>
+          </div>
+
+          <div class="filter-cluster">
+            <span id="contextGroupTitle" class="cluster-title">Sequence Context</span>
+            <div id="contextGroup" class="toggle-group multi"></div>
           </div>
 
           <div class="filter-cluster">
@@ -148,6 +153,10 @@
           <div class="stat-box">
             <span class="stat-label">Method scope</span>
             <span class="stat-value" id="currentMethodScope">-</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Context scope</span>
+            <span class="stat-value" id="currentContextScope">-</span>
           </div>
         </div>
 

@@ -1,7 +1,7 @@
 {
   "version": "pure_dna",
   "display_name": "Pure DNA Explorer",
-  "generated_at": "2026-03-24T16:10:19.980Z",
+  "generated_at": "2026-03-24T17:21:57.877Z",
   "universe": {
     "pdb_entries": 1830,
     "forms": {
@@ -149,6 +149,26 @@
         "epsilon",
         "zeta",
         "chi"
+      ],
+      "context_column": "base",
+      "context_label": "Base Type",
+      "context_options": [
+        {
+          "id": "A",
+          "label": "A"
+        },
+        {
+          "id": "C",
+          "label": "C"
+        },
+        {
+          "id": "G",
+          "label": "G"
+        },
+        {
+          "id": "T",
+          "label": "T"
+        }
       ]
     },
     "sugar_torsion": {
@@ -162,6 +182,26 @@
         "v2",
         "v3",
         "v4"
+      ],
+      "context_column": "base",
+      "context_label": "Base Type",
+      "context_options": [
+        {
+          "id": "A",
+          "label": "A"
+        },
+        {
+          "id": "C",
+          "label": "C"
+        },
+        {
+          "id": "G",
+          "label": "G"
+        },
+        {
+          "id": "T",
+          "label": "T"
+        }
       ]
     },
     "pucker": {
@@ -174,6 +214,26 @@
         "tm",
         "sszp",
         "dp"
+      ],
+      "context_column": "base",
+      "context_label": "Base Type",
+      "context_options": [
+        {
+          "id": "A",
+          "label": "A"
+        },
+        {
+          "id": "C",
+          "label": "C"
+        },
+        {
+          "id": "G",
+          "label": "G"
+        },
+        {
+          "id": "T",
+          "label": "T"
+        }
       ]
     },
     "base_pair": {
@@ -188,6 +248,34 @@
         "buckle",
         "propeller",
         "opening"
+      ],
+      "context_column": "pair_type",
+      "context_label": "Pair Type",
+      "context_options": [
+        {
+          "id": "A-T",
+          "label": "A-T"
+        },
+        {
+          "id": "T-A",
+          "label": "T-A"
+        },
+        {
+          "id": "G-C",
+          "label": "G-C"
+        },
+        {
+          "id": "C-G",
+          "label": "C-G"
+        },
+        {
+          "id": "G-T",
+          "label": "G-T"
+        },
+        {
+          "id": "T-G",
+          "label": "T-G"
+        }
       ]
     },
     "step": {
@@ -202,6 +290,50 @@
         "tilt",
         "roll",
         "twist"
+      ],
+      "context_column": "step_type",
+      "context_label": "Step Type",
+      "context_options": [
+        {
+          "id": "AA/TT",
+          "label": "AA/TT"
+        },
+        {
+          "id": "AC/GT",
+          "label": "AC/GT"
+        },
+        {
+          "id": "AG/CT",
+          "label": "AG/CT"
+        },
+        {
+          "id": "AT/AT",
+          "label": "AT/AT"
+        },
+        {
+          "id": "CA/TG",
+          "label": "CA/TG"
+        },
+        {
+          "id": "CC/GG",
+          "label": "CC/GG"
+        },
+        {
+          "id": "CG/CG",
+          "label": "CG/CG"
+        },
+        {
+          "id": "GA/TC",
+          "label": "GA/TC"
+        },
+        {
+          "id": "GC/GC",
+          "label": "GC/GC"
+        },
+        {
+          "id": "TA/TA",
+          "label": "TA/TA"
+        }
       ]
     },
     "helical": {
@@ -216,6 +348,50 @@
         "inclination",
         "tip",
         "h_twist"
+      ],
+      "context_column": "step_type",
+      "context_label": "Step Type",
+      "context_options": [
+        {
+          "id": "AA/TT",
+          "label": "AA/TT"
+        },
+        {
+          "id": "AC/GT",
+          "label": "AC/GT"
+        },
+        {
+          "id": "AG/CT",
+          "label": "AG/CT"
+        },
+        {
+          "id": "AT/AT",
+          "label": "AT/AT"
+        },
+        {
+          "id": "CA/TG",
+          "label": "CA/TG"
+        },
+        {
+          "id": "CC/GG",
+          "label": "CC/GG"
+        },
+        {
+          "id": "CG/CG",
+          "label": "CG/CG"
+        },
+        {
+          "id": "GA/TC",
+          "label": "GA/TC"
+        },
+        {
+          "id": "GC/GC",
+          "label": "GC/GC"
+        },
+        {
+          "id": "TA/TA",
+          "label": "TA/TA"
+        }
       ]
     }
   },
@@ -224,7 +400,7 @@
       "param_id": "shear",
       "family_id": "base_pair",
       "display_name": "Shear",
-      "unit": "A",
+      "unit": "Å",
       "value_type": "numeric_linear",
       "display_range_default": [
         -3,
@@ -235,7 +411,7 @@
       "param_id": "stretch",
       "family_id": "base_pair",
       "display_name": "Stretch",
-      "unit": "A",
+      "unit": "Å",
       "value_type": "numeric_linear",
       "display_range_default": [
         -1,
@@ -246,7 +422,7 @@
       "param_id": "stagger",
       "family_id": "base_pair",
       "display_name": "Stagger",
-      "unit": "A",
+      "unit": "Å",
       "value_type": "numeric_linear",
       "display_range_default": [
         -2,
@@ -290,21 +466,21 @@
       "param_id": "shift",
       "family_id": "step",
       "display_name": "Shift",
-      "unit": "A",
+      "unit": "Å",
       "value_type": "numeric_linear",
       "display_range_default": [
-        -3,
-        3
+        -4,
+        4
       ]
     },
     {
       "param_id": "slide",
       "family_id": "step",
       "display_name": "Slide",
-      "unit": "A",
+      "unit": "Å",
       "value_type": "numeric_linear",
       "display_range_default": [
-        -3,
+        -7,
         3
       ]
     },
@@ -312,11 +488,11 @@
       "param_id": "rise",
       "family_id": "step",
       "display_name": "Rise",
-      "unit": "A",
+      "unit": "Å",
       "value_type": "numeric_linear",
       "display_range_default": [
-        2,
-        5
+        1,
+        6
       ]
     },
     {
@@ -326,8 +502,8 @@
       "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
-        -20,
-        20
+        -25,
+        25
       ]
     },
     {
@@ -337,8 +513,8 @@
       "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
-        -20,
-        30
+        -25,
+        35
       ]
     },
     {
@@ -348,7 +524,7 @@
       "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
-        15,
+        -65,
         55
       ]
     },
@@ -356,33 +532,33 @@
       "param_id": "x_disp",
       "family_id": "helical",
       "display_name": "X-disp",
-      "unit": "A",
+      "unit": "Å",
       "value_type": "numeric_linear",
       "display_range_default": [
-        -4,
-        4
+        -8,
+        8
       ]
     },
     {
       "param_id": "y_disp",
       "family_id": "helical",
       "display_name": "Y-disp",
-      "unit": "A",
+      "unit": "Å",
       "value_type": "numeric_linear",
       "display_range_default": [
-        -4,
-        4
+        -8,
+        8
       ]
     },
     {
       "param_id": "h_rise",
       "family_id": "helical",
       "display_name": "h-Rise",
-      "unit": "A",
+      "unit": "Å",
       "value_type": "numeric_linear",
       "display_range_default": [
-        2.5,
-        4
+        0,
+        6
       ]
     },
     {
@@ -392,8 +568,8 @@
       "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
-        -40,
-        40
+        -60,
+        50
       ]
     },
     {
@@ -403,8 +579,8 @@
       "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
-        -40,
-        40
+        -50,
+        80
       ]
     },
     {
@@ -414,7 +590,7 @@
       "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
-        0,
+        -65,
         60
       ]
     },
@@ -589,7 +765,7 @@
       "param_id": "sszp",
       "family_id": "pucker",
       "display_name": "ssZp",
-      "unit": "A",
+      "unit": "Å",
       "value_type": "numeric_linear",
       "display_range_default": [
         -4,
@@ -600,7 +776,7 @@
       "param_id": "dp",
       "family_id": "pucker",
       "display_name": "Dp",
-      "unit": "A",
+      "unit": "Å",
       "value_type": "numeric_linear",
       "display_range_default": [
         0,

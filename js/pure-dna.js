@@ -88,6 +88,99 @@ function smoothCircularCounts(counts, sigma = 1.6) {
   });
 }
 
+function rotateCircularCounts(counts, shiftBins) {
+  if (!shiftBins) return [...counts];
+  const bins = counts.length;
+  const rotated = new Array(bins);
+  for (let index = 0; index < bins; index += 1) {
+    rotated[index] = counts[(index + shiftBins) % bins];
+  }
+  return rotated;
+}
+
+function circularWindowMinShift(rawCounts, sigma = 1.2) {
+  const bins = rawCounts.length;
+  const smooth = smoothCircularCounts([...rawCounts], sigma);
+  const width = 360 / bins;
+  const windowBins = Math.min(bins - 1, Math.max(5, Math.round(36 / width)));
+  let windowSum = 0;
+  for (let index = 0; index < windowBins; index += 1) {
+    windowSum += smooth[index];
+  }
+
+  let bestStart = 0;
+  let bestSum = windowSum;
+  for (let start = 1; start < bins; start += 1) {
+    windowSum -= smooth[start - 1];
+    windowSum += smooth[(start + windowBins - 1) % bins];
+    if (windowSum < bestSum) {
+      bestSum = windowSum;
+      bestStart = start;
+    }
+  }
+
+  const total = smooth.reduce((sum, value) => sum + value, 0);
+  const uniformWindow = total * (windowBins / bins);
+  if (!uniformWindow || bestSum > uniformWindow * 0.85) {
+    return { shiftBins: 0, confidence: "flat" };
+  }
+
+  return {
+    shiftBins: (bestStart + Math.floor(windowBins / 2)) % bins,
+    confidence: "window",
+  };
+}
+
+function findAdaptiveCircularCut(rawCounts, paramMeta) {
+  const total = rawCounts.reduce((sum, value) => sum + value, 0);
+  if (!total || total < 8) {
+    return { displayCut: 0, shiftBins: 0, confidence: "sparse" };
+  }
+
+  const period = paramMeta.period ?? 360;
+  const bins = rawCounts.length;
+  const width = period / bins;
+
+  let bestGapStart = -1;
+  let bestGapLength = 0;
+  for (let start = 0; start < bins; start += 1) {
+    if (rawCounts[start] !== 0) continue;
+    let length = 1;
+    while (length < bins && rawCounts[(start + length) % bins] === 0) {
+      length += 1;
+    }
+    if (length > bestGapLength) {
+      bestGapLength = length;
+      bestGapStart = start;
+    }
+  }
+
+  if (bestGapLength >= 2) {
+    const shiftBins = Math.round(bestGapStart + (bestGapLength / 2)) % bins;
+    return {
+      displayCut: shiftBins * width,
+      shiftBins,
+      confidence: "gap",
+    };
+  }
+
+  const windowChoice = circularWindowMinShift(rawCounts);
+  return {
+    displayCut: windowChoice.shiftBins * width,
+    shiftBins: windowChoice.shiftBins,
+    confidence: windowChoice.confidence,
+  };
+}
+
+function buildCircularTickSpec(period, displayCut, compact = false) {
+  const tickvals = compact ? [0, period / 2, period] : [0, period / 3, (2 * period) / 3, period];
+  const ticktext = tickvals.map((tick) => {
+    const original = wrapCircular(tick + displayCut, period);
+    return Number.isInteger(original) ? `${original}` : original.toFixed(1);
+  });
+  return { tickvals, ticktext };
+}
+
 function percentileFromCounts(counts, range, q) {
   const total = counts.reduce((sum, value) => sum + value, 0);
   if (!total) return null;
@@ -326,10 +419,11 @@ function addValueToAccumulator(acc, paramMeta, value, pid, range) {
   return true;
 }
 
-function finalizeAccumulator(acc, paramMeta, range) {
+function finalizeAccumulator(acc, paramMeta, range, displayCut = 0, shiftBins = 0) {
+  const rawCounts = paramMeta.isCircular ? rotateCircularCounts(acc.rawCounts, shiftBins) : [...acc.rawCounts];
   const smoothCounts = paramMeta.isCircular
-    ? smoothCircularCounts([...acc.rawCounts])
-    : smoothLinearCounts([...acc.rawCounts]);
+    ? smoothCircularCounts(rawCounts)
+    : smoothLinearCounts(rawCounts);
   const totalSmooth = smoothCounts.reduce((sum, value) => sum + value, 0);
   const density = totalSmooth ? smoothCounts.map((value) => value / totalSmooth) : smoothCounts;
   const x = density.map((_, index) => {
@@ -340,6 +434,9 @@ function finalizeAccumulator(acc, paramMeta, range) {
     const width = (range[1] - range[0]) / acc.bins;
     return range[0] + width * (index + 0.5);
   });
+  const hoverAngles = paramMeta.isCircular
+    ? x.map((displayAngle) => wrapCircular(displayAngle + displayCut, paramMeta.period ?? 360))
+    : null;
 
   let summary;
   if (paramMeta.isCircular) {
@@ -375,7 +472,7 @@ function finalizeAccumulator(acc, paramMeta, range) {
     };
   }
 
-  return { x, y: density, summary };
+  return { x, y: density, hoverAngles, displayCut, summary };
 }
 
 function accumulateVisibleSeries(familyData, allowedPidMask, paramId, paramMeta, range) {
@@ -400,10 +497,28 @@ function accumulateVisibleSeries(familyData, allowedPidMask, paramId, paramMeta,
     }
   }
 
+  let displayCut = 0;
+  let shiftBins = 0;
+  if (paramMeta.isCircular) {
+    const aggregateCounts = new Uint32Array(bins);
+    for (const acc of Object.values(seriesAcc)) {
+      for (let index = 0; index < bins; index += 1) {
+        aggregateCounts[index] += acc.rawCounts[index];
+      }
+    }
+    const seamChoice = findAdaptiveCircularCut(aggregateCounts, paramMeta);
+    displayCut = seamChoice.displayCut;
+    shiftBins = seamChoice.shiftBins;
+  }
+
   return {
     totalVisibleObservations,
+    displayCut,
     series: Object.fromEntries(
-      Object.entries(seriesAcc).map(([formId, acc]) => [formId, finalizeAccumulator(acc, paramMeta, range)]),
+      Object.entries(seriesAcc).map(([formId, acc]) => [
+        formId,
+        finalizeAccumulator(acc, paramMeta, range, displayCut, shiftBins),
+      ]),
     ),
   };
 }
@@ -572,9 +687,9 @@ function parameterRange(paramMeta) {
   return paramMeta.display_range_default ?? (paramMeta.isCircular ? [0, paramMeta.period ?? 360] : null);
 }
 
-function buildTrace(formId, seriesData) {
+function buildTrace(formId, seriesData, paramMeta) {
   const formMeta = FORM_META[formId];
-  return {
+  const trace = {
     x: seriesData.x,
     y: seriesData.y,
     type: "scatter",
@@ -585,17 +700,25 @@ function buildTrace(formId, seriesData) {
     name: formMeta.label,
     hovertemplate: "%{x:.2f}<br>Density %{y:.4f}<extra>" + formMeta.label + "</extra>",
   };
+  if (paramMeta.isCircular) {
+    trace.customdata = seriesData.hoverAngles;
+    trace.hovertemplate = "Angle %{customdata:.1f}<br>Density %{y:.4f}<extra>" + formMeta.label + "</extra>";
+  }
+  return trace;
 }
 
-function buildMiniLayout(paramMeta, range) {
+function buildMiniLayout(paramMeta, range, displayCut = 0) {
   const xaxis = paramMeta.isCircular
-    ? {
+    ? (() => {
+        const ticks = buildCircularTickSpec(paramMeta.period ?? 360, displayCut, true);
+        return {
         range: [0, paramMeta.period ?? 360],
-        tickvals: [0, 180, 360],
-        ticktext: ["0", "180", "360"],
+        tickvals: ticks.tickvals,
+        ticktext: ticks.ticktext,
         showgrid: false,
         zeroline: false,
-      }
+      };
+      })()
     : {
         range,
         showgrid: false,
@@ -687,10 +810,10 @@ function renderFamilyOverview(familyData, allowedMask) {
 
     const traces = Object.entries(accumulation.series)
       .filter(([, seriesData]) => seriesData.summary.n > 0)
-      .map(([formId, seriesData]) => buildTrace(formId, seriesData));
+      .map(([formId, seriesData]) => buildTrace(formId, seriesData, paramMeta));
     if (!traces.length) continue;
 
-    Plotly.newPlot(`mini-${paramId}`, traces, buildMiniLayout(paramMeta, range), {
+    Plotly.newPlot(`mini-${paramId}`, traces, buildMiniLayout(paramMeta, range, accumulation.displayCut), {
       responsive: true,
       displayModeBar: false,
     }).then(() => Plotly.Plots.resize(`mini-${paramId}`)).catch(() => {});
@@ -705,15 +828,18 @@ function updateStats(allowed, familyData, accumulation) {
   el("currentMethodScope").textContent = selectedMethodsLabel();
 }
 
-function buildLayout(paramMeta, range) {
+function buildLayout(paramMeta, range, displayCut = 0) {
   const xaxis = paramMeta.isCircular
-    ? {
+    ? (() => {
+        const ticks = buildCircularTickSpec(paramMeta.period ?? 360, displayCut, false);
+        return {
         title: paramMeta.display_name,
         range: [0, paramMeta.period ?? 360],
-        tickvals: [0, 120, 240, 360],
-        ticktext: ["0", "120", "240", "360"],
+        tickvals: ticks.tickvals,
+        ticktext: ticks.ticktext,
         zeroline: false,
-      }
+      };
+      })()
     : {
         title: paramMeta.display_name,
         range,
@@ -745,7 +871,7 @@ async function renderPlot() {
   const accumulation = accumulateVisibleSeries(familyData, allowed.mask, state.parameterId, paramMeta, range);
   const traces = Object.entries(accumulation.series)
     .filter(([, seriesData]) => seriesData.summary.n > 0)
-    .map(([formId, seriesData]) => buildTrace(formId, seriesData));
+    .map(([formId, seriesData]) => buildTrace(formId, seriesData, paramMeta));
 
   updateStats(allowed, familyData, accumulation);
   renderSummaryCards(accumulation.series, paramMeta);
@@ -758,7 +884,7 @@ async function renderPlot() {
   }
 
   el("plot").innerHTML = "";
-  Plotly.newPlot("plot", traces, buildLayout(paramMeta, range), {
+  Plotly.newPlot("plot", traces, buildLayout(paramMeta, range, accumulation.displayCut), {
     responsive: true,
     displayModeBar: false,
   });

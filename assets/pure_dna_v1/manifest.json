@@ -1,7 +1,7 @@
 {
   "version": "pure_dna_v1",
   "display_name": "Pure DNA Explorer",
-  "generated_at": "2026-03-24T14:41:02.129Z",
+  "generated_at": "2026-03-24T16:10:19.980Z",
   "universe": {
     "pdb_entries": 1830,
     "forms": {
@@ -30,7 +30,12 @@
       "nmr"
     ],
     "resolution": "any",
-    "form": "all",
+    "forms": [
+      "adna",
+      "bdna",
+      "zdna",
+      "other"
+    ],
     "terminal_policy": "include",
     "family_id": "base_pair",
     "parameter_id": "shear"
@@ -99,10 +104,6 @@
       }
     ],
     "form_options": [
-      {
-        "id": "all",
-        "label": "All"
-      },
       {
         "id": "adna",
         "label": "A-DNA"
@@ -223,6 +224,7 @@
       "param_id": "shear",
       "family_id": "base_pair",
       "display_name": "Shear",
+      "unit": "A",
       "value_type": "numeric_linear",
       "display_range_default": [
         -3,
@@ -233,6 +235,7 @@
       "param_id": "stretch",
       "family_id": "base_pair",
       "display_name": "Stretch",
+      "unit": "A",
       "value_type": "numeric_linear",
       "display_range_default": [
         -1,
@@ -243,6 +246,7 @@
       "param_id": "stagger",
       "family_id": "base_pair",
       "display_name": "Stagger",
+      "unit": "A",
       "value_type": "numeric_linear",
       "display_range_default": [
         -2,
@@ -253,6 +257,7 @@
       "param_id": "buckle",
       "family_id": "base_pair",
       "display_name": "Buckle",
+      "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
         -40,
@@ -263,6 +268,7 @@
       "param_id": "propeller",
       "family_id": "base_pair",
       "display_name": "Propeller",
+      "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
         -40,
@@ -273,6 +279,7 @@
       "param_id": "opening",
       "family_id": "base_pair",
       "display_name": "Opening",
+      "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
         -20,
@@ -283,6 +290,7 @@
       "param_id": "shift",
       "family_id": "step",
       "display_name": "Shift",
+      "unit": "A",
       "value_type": "numeric_linear",
       "display_range_default": [
         -3,
@@ -293,6 +301,7 @@
       "param_id": "slide",
       "family_id": "step",
       "display_name": "Slide",
+      "unit": "A",
       "value_type": "numeric_linear",
       "display_range_default": [
         -3,
@@ -303,6 +312,7 @@
       "param_id": "rise",
       "family_id": "step",
       "display_name": "Rise",
+      "unit": "A",
       "value_type": "numeric_linear",
       "display_range_default": [
         2,
@@ -313,6 +323,7 @@
       "param_id": "tilt",
       "family_id": "step",
       "display_name": "Tilt",
+      "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
         -20,
@@ -323,6 +334,7 @@
       "param_id": "roll",
       "family_id": "step",
       "display_name": "Roll",
+      "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
         -20,
@@ -333,6 +345,7 @@
       "param_id": "twist",
       "family_id": "step",
       "display_name": "Twist",
+      "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
         15,
@@ -343,6 +356,7 @@
       "param_id": "x_disp",
       "family_id": "helical",
       "display_name": "X-disp",
+      "unit": "A",
       "value_type": "numeric_linear",
       "display_range_default": [
         -4,
@@ -353,6 +367,7 @@
       "param_id": "y_disp",
       "family_id": "helical",
       "display_name": "Y-disp",
+      "unit": "A",
       "value_type": "numeric_linear",
       "display_range_default": [
         -4,
@@ -363,6 +378,7 @@
       "param_id": "h_rise",
       "family_id": "helical",
       "display_name": "h-Rise",
+      "unit": "A",
       "value_type": "numeric_linear",
       "display_range_default": [
         2.5,
@@ -373,6 +389,7 @@
       "param_id": "inclination",
       "family_id": "helical",
       "display_name": "Inclination",
+      "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
         -40,
@@ -383,6 +400,7 @@
       "param_id": "tip",
       "family_id": "helical",
       "display_name": "Tip",
+      "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
         -40,
@@ -393,6 +411,7 @@
       "param_id": "h_twist",
       "family_id": "helical",
       "display_name": "h-Twist",
+      "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
         0,
@@ -403,6 +422,7 @@
       "param_id": "alpha",
       "family_id": "backbone",
       "display_name": "alpha",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -414,6 +434,7 @@
       "param_id": "beta",
       "family_id": "backbone",
       "display_name": "beta",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -425,6 +446,7 @@
       "param_id": "gamma",
       "family_id": "backbone",
       "display_name": "gamma",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -436,6 +458,7 @@
       "param_id": "delta",
       "family_id": "backbone",
       "display_name": "delta",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -447,6 +470,7 @@
       "param_id": "epsilon",
       "family_id": "backbone",
       "display_name": "epsilon",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -458,6 +482,7 @@
       "param_id": "zeta",
       "family_id": "backbone",
       "display_name": "zeta",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -469,6 +494,7 @@
       "param_id": "chi",
       "family_id": "backbone",
       "display_name": "chi",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -480,6 +506,7 @@
       "param_id": "v0",
       "family_id": "sugar_torsion",
       "display_name": "v0",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -491,6 +518,7 @@
       "param_id": "v1",
       "family_id": "sugar_torsion",
       "display_name": "v1",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -502,6 +530,7 @@
       "param_id": "v2",
       "family_id": "sugar_torsion",
       "display_name": "v2",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -513,6 +542,7 @@
       "param_id": "v3",
       "family_id": "sugar_torsion",
       "display_name": "v3",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -524,6 +554,7 @@
       "param_id": "v4",
       "family_id": "sugar_torsion",
       "display_name": "v4",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -535,6 +566,7 @@
       "param_id": "p",
       "family_id": "pucker",
       "display_name": "Phase",
+      "unit": "deg",
       "value_type": "numeric_circular",
       "period": 360,
       "display_range_default": [
@@ -546,6 +578,7 @@
       "param_id": "tm",
       "family_id": "pucker",
       "display_name": "tm",
+      "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
         0,
@@ -556,6 +589,7 @@
       "param_id": "sszp",
       "family_id": "pucker",
       "display_name": "ssZp",
+      "unit": "A",
       "value_type": "numeric_linear",
       "display_range_default": [
         -4,
@@ -566,6 +600,7 @@
       "param_id": "dp",
       "family_id": "pucker",
       "display_name": "Dp",
+      "unit": "A",
       "value_type": "numeric_linear",
       "display_range_default": [
         0,

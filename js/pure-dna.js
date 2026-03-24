@@ -45,6 +45,11 @@ function formatFloat(value, digits = 2) {
   return Number.isFinite(value) ? Number(value).toFixed(digits) : "-";
 }
 
+function formatNumberWithUnit(value, digits, unit = "") {
+  if (!Number.isFinite(value)) return "-";
+  return unit ? `${Number(value).toFixed(digits)} ${unit}` : Number(value).toFixed(digits);
+}
+
 function escapeHtml(text) {
   return String(text ?? "")
     .replaceAll("&", "&amp;")
@@ -189,20 +194,36 @@ function findAdaptiveCircularCut(rawCounts, paramMeta) {
   };
 }
 
-function buildCircularTickSpec(period, displayCut, compact = false) {
+function formatCircularTickLabel(value, period) {
+  const wrapped = wrapCircular(value, period);
+  const rounded = Number.isInteger(wrapped) ? `${wrapped}` : wrapped.toFixed(1);
+  return rounded === `${period}` ? "0" : rounded;
+}
+
+function circularDisplayValue(value, axisMode, period = 360) {
+  if (!Number.isFinite(value)) return null;
+  const wrapped = wrapCircular(value, period);
+  if (axisMode !== "signed_180") return wrapped;
+  const half = period / 2;
+  return wrapped > half ? wrapped - period : wrapped;
+}
+
+function buildCircularTickSpec(period, displayCut, compact = false, axisMode = "auto") {
   const tickvals = compact ? [0, period / 2, period] : [0, period / 3, (2 * period) / 3, period];
   let ticktext;
-  if (state.circularMode === "wrap_360") {
+  if (axisMode === "wrap_360") {
     ticktext = tickvals.map((tick) => {
       const value = compact && tick === period ? period : tick;
       return Number.isInteger(value) ? `${value}` : value.toFixed(1);
     });
-  } else {
+  } else if (axisMode === "signed_180") {
     ticktext = tickvals.map((tick) => {
       let signed = tick - (period / 2);
       if (tick === period) signed = period / 2;
       return Number.isInteger(signed) ? `${signed}` : signed.toFixed(1);
     });
+  } else {
+    ticktext = tickvals.map((tick) => formatCircularTickLabel(tick + displayCut, period));
   }
   return { tickvals, ticktext };
 }
@@ -238,6 +259,26 @@ function percentileFromCounts(counts, range, q) {
     }
   }
   return range[1];
+}
+
+function inferLinearRange(familyData, paramId) {
+  const values = familyData?.values?.[paramId];
+  if (!values) return [0, 1];
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < values.length; i += 1) {
+    const value = values[i];
+    if (!Number.isFinite(value)) continue;
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+  if (Math.abs(max - min) < 1e-9) {
+    const pad = Math.max(1, Math.abs(max) * 0.1);
+    return [min - pad, max + pad];
+  }
+  const pad = (max - min) * 0.1;
+  return [min - pad, max + pad];
 }
 
 async function fetchJson(url) {
@@ -379,7 +420,7 @@ function currentParameterMeta(paramId = state.parameterId) {
 }
 
 function formOptions() {
-  return (state.manifest?.controls?.form_options ?? []).filter((item) => item.id !== "all");
+  return state.manifest?.controls?.form_options ?? [];
 }
 
 function selectedFormIds() {
@@ -427,7 +468,6 @@ function passesResolution(row) {
 
 function buildAllowedPidMask() {
   const mask = new Uint8Array(state.pdbManifest.maxPid + 1);
-  const pdbCountsByForm = { adna: 0, bdna: 0, zdna: 0, other: 0 };
   let total = 0;
   for (const row of state.pdbManifest.rows) {
     if (!passesCleanliness(row)) continue;
@@ -435,10 +475,9 @@ function buildAllowedPidMask() {
     if (!passesResolution(row)) continue;
     if (!state.forms.has(row.form)) continue;
     mask[row.pid] = 1;
-    pdbCountsByForm[row.form] = (pdbCountsByForm[row.form] ?? 0) + 1;
     total += 1;
   }
-  return { mask, total, pdbCountsByForm };
+  return { mask, total };
 }
 
 function initAccumulator(paramMeta, bins) {
@@ -471,6 +510,9 @@ function addValueToAccumulator(acc, paramMeta, value, pid, range) {
     return true;
   }
 
+  if (!range || !Number.isFinite(range[0]) || !Number.isFinite(range[1]) || range[1] <= range[0]) {
+    return false;
+  }
   if (value < range[0] || value > range[1]) return false;
   const width = (range[1] - range[0]) / acc.bins;
   let binIndex = Math.floor((value - range[0]) / width);
@@ -503,7 +545,9 @@ function finalizeAccumulator(acc, paramMeta, range, displayCut = 0, shiftBins = 
     ? x.map((displayAngle) => wrapCircular(displayAngle + displayCut, paramMeta.period ?? 360))
     : null;
   const hoverDisplayAngles = paramMeta.isCircular
-    ? x.map((displayAngle) => displayAngle - ((paramMeta.period ?? 360) / 2))
+    ? (axisMode === "signed_180"
+        ? x.map((displayAngle) => displayAngle - ((paramMeta.period ?? 360) / 2))
+        : null)
     : null;
 
   let summary;
@@ -790,6 +834,13 @@ function syncSelectors() {
   }
 }
 
+function updateMiniPanelSelection() {
+  const panels = el("familyOverview").querySelectorAll(".mini-panel");
+  for (const panel of panels) {
+    panel.classList.toggle("active", panel.dataset.paramId === state.parameterId);
+  }
+}
+
 function bindControls() {
   renderSingleChoiceGroup("cleanlinessGroup", state.manifest.controls.cleanliness_options, state.cleanliness, (nextId) => {
     state.cleanliness = nextId;
@@ -834,7 +885,8 @@ function bindControls() {
 
   el("parameterSelect").onchange = async (event) => {
     state.parameterId = event.target.value;
-    await renderPlot();
+    updateMiniPanelSelection();
+    await renderPlot({ skipOverview: true });
   };
 }
 
@@ -856,8 +908,11 @@ function pathFromRelative(relativePath) {
   return String(relativePath || "").replace(/^\.\//, "");
 }
 
-function parameterRange(paramMeta) {
-  return paramMeta.display_range_default ?? (paramMeta.isCircular ? [0, paramMeta.period ?? 360] : null);
+function parameterRange(paramMeta, familyData = null, paramId = null) {
+  if (paramMeta.display_range_default) return paramMeta.display_range_default;
+  if (paramMeta.isCircular) return [0, paramMeta.period ?? 360];
+  if (familyData && paramId) return inferLinearRange(familyData, paramId);
+  return [0, 1];
 }
 
 function buildTrace(formId, seriesData, paramMeta) {
@@ -874,12 +929,12 @@ function buildTrace(formId, seriesData, paramMeta) {
     hovertemplate: "%{x:.2f}<br>Density %{y:.4f}<extra>" + formMeta.label + "</extra>",
   };
   if (paramMeta.isCircular) {
-    trace.customdata = seriesData.hoverAngles;
-    if (seriesData.axisMode === "wrap_360") {
-      trace.hovertemplate = "Angle %{customdata:.1f}<br>Density %{y:.4f}<extra>" + formMeta.label + "</extra>";
-    } else {
+    if (seriesData.axisMode === "signed_180") {
       trace.customdata = seriesData.hoverAngles.map((angle, index) => [seriesData.hoverDisplayAngles[index], angle]);
       trace.hovertemplate = "View %{customdata[0]:.1f}<br>Angle %{customdata[1]:.1f}<br>Density %{y:.4f}<extra>" + formMeta.label + "</extra>";
+    } else {
+      trace.customdata = seriesData.hoverAngles;
+      trace.hovertemplate = "Angle %{customdata:.1f}<br>Density %{y:.4f}<extra>" + formMeta.label + "</extra>";
     }
   }
   return trace;
@@ -921,26 +976,29 @@ function buildMiniLayout(paramMeta, range, displayCut = 0, axisMode = "auto") {
 function renderSummaryCards(series, paramMeta) {
   const root = el("seriesSummary");
   root.innerHTML = "";
+  const unit = paramMeta.unit ?? "";
   for (const [formId, seriesData] of Object.entries(series)) {
     if (!seriesData.summary.n) continue;
     const meta = FORM_META[formId];
     const card = document.createElement("article");
     card.className = "card";
+    const circularMean = circularDisplayValue(seriesData.summary.mean, seriesData.axisMode, paramMeta.period ?? 360);
+    const circularPeak = circularDisplayValue(seriesData.summary.peak, seriesData.axisMode, paramMeta.period ?? 360);
     const metricLines = paramMeta.isCircular
       ? [
           ["Rows", formatInt(seriesData.summary.n)],
           ["PDBs", formatInt(seriesData.summary.pdbCount)],
-          ["Mean", formatFloat(seriesData.summary.mean, 1)],
-          ["Spread", formatFloat(seriesData.summary.spread, 1)],
-          ["Peak", formatFloat(seriesData.summary.peak, 1)],
+          ["Mean", formatNumberWithUnit(circularMean, 1, unit)],
+          ["Spread", formatNumberWithUnit(seriesData.summary.spread, 1, unit)],
+          ["Peak", formatNumberWithUnit(circularPeak, 1, unit)],
         ]
       : [
           ["Rows", formatInt(seriesData.summary.n)],
           ["PDBs", formatInt(seriesData.summary.pdbCount)],
-          ["Mean", formatFloat(seriesData.summary.mean, 2)],
-          ["Std", formatFloat(seriesData.summary.std, 2)],
-          ["P05", formatFloat(seriesData.summary.p05, 2)],
-          ["P95", formatFloat(seriesData.summary.p95, 2)],
+          ["Mean", formatNumberWithUnit(seriesData.summary.mean, 2, unit)],
+          ["Std", formatNumberWithUnit(seriesData.summary.std, 2, unit)],
+          ["P05", formatNumberWithUnit(seriesData.summary.p05, 2, unit)],
+          ["P95", formatNumberWithUnit(seriesData.summary.p95, 2, unit)],
         ];
     card.innerHTML = `
       <span class="kind" style="color:${meta.color}">${meta.label}</span>
@@ -965,13 +1023,14 @@ function renderFamilyOverview(familyData, allowedMask) {
 
   for (const paramId of familyMeta.param_ids) {
     const paramMeta = currentParameterMeta(paramId);
-    const range = parameterRange(paramMeta);
+    const range = parameterRange(paramMeta, familyData, paramId);
     const accumulation = accumulateVisibleSeries(familyData, allowedMask, paramId, paramMeta, range);
     const totalRows = Object.values(accumulation.series).reduce((sum, entry) => sum + entry.summary.n, 0);
 
     const panel = document.createElement("button");
     panel.type = "button";
     panel.className = `mini-panel ${paramId === state.parameterId ? "active" : ""}`;
+    panel.dataset.paramId = paramId;
     panel.innerHTML = `
       <div class="mini-head">
         <h3 class="mini-title">${paramMeta.display_name}</h3>
@@ -1007,11 +1066,12 @@ function updateStats(allowed, familyData, accumulation) {
 }
 
 function buildLayout(paramMeta, range, displayCut = 0, axisMode = "auto") {
+  const axisTitle = paramMeta.unit ? `${paramMeta.display_name} (${paramMeta.unit})` : paramMeta.display_name;
   const xaxis = paramMeta.isCircular
     ? (() => {
         const ticks = buildCircularTickSpec(paramMeta.period ?? 360, displayCut, false, axisMode);
         return {
-        title: paramMeta.display_name,
+        title: axisTitle,
         range: [0, paramMeta.period ?? 360],
         tickvals: ticks.tickvals,
         ticktext: ticks.ticktext,
@@ -1019,7 +1079,7 @@ function buildLayout(paramMeta, range, displayCut = 0, axisMode = "auto") {
       };
       })()
     : {
-        title: paramMeta.display_name,
+        title: axisTitle,
         range,
         zeroline: false,
       };
@@ -1041,10 +1101,11 @@ function buildLayout(paramMeta, range, displayCut = 0, axisMode = "auto") {
   };
 }
 
-async function renderPlot() {
+async function renderPlot(options = {}) {
+  const { skipOverview = false } = options;
   const familyData = await ensureFamilyLoaded(state.familyId);
   const paramMeta = currentParameterMeta();
-  const range = parameterRange(paramMeta);
+  const range = parameterRange(paramMeta, familyData, state.parameterId);
   const allowed = buildAllowedPidMask();
   const accumulation = accumulateVisibleSeries(familyData, allowed.mask, state.parameterId, paramMeta, range);
   const traces = Object.entries(accumulation.series)
@@ -1053,18 +1114,27 @@ async function renderPlot() {
 
   updateStats(allowed, familyData, accumulation);
   renderSummaryCards(accumulation.series, paramMeta);
-  renderFamilyOverview(familyData, allowed.mask);
+  if (skipOverview) updateMiniPanelSelection();
+  else renderFamilyOverview(familyData, allowed.mask);
 
   if (!traces.length) {
     el("plot").innerHTML = `<div class="empty-state">No observations match the current filter stack.</div>`;
     return;
   }
 
-  el("plot").innerHTML = "";
-  Plotly.newPlot("plot", traces, buildLayout(paramMeta, range, accumulation.displayCut, accumulation.axisMode), {
+  const plotNode = el("plot");
+  const canReact = Array.isArray(plotNode.data);
+  if (!canReact) plotNode.innerHTML = "";
+  const layout = buildLayout(paramMeta, range, accumulation.displayCut, accumulation.axisMode);
+  const config = {
     responsive: true,
     displayModeBar: false,
-  });
+  };
+  if (canReact) {
+    Plotly.react("plot", traces, layout, config);
+  } else {
+    Plotly.newPlot("plot", traces, layout, config);
+  }
 }
 
 async function renderFiltersAndPlot() {
@@ -1078,7 +1148,7 @@ async function boot() {
   state.cleanliness = state.manifest.defaults.cleanliness;
   state.methods = new Set(state.manifest.defaults.methods);
   state.resolution = state.manifest.defaults.resolution;
-  state.forms = new Set(formOptions().map((item) => item.id));
+  state.forms = new Set(state.manifest.defaults.forms ?? formOptions().map((item) => item.id));
   state.terminalPolicy = state.manifest.defaults.terminal_policy;
   state.familyId = state.manifest.defaults.family_id;
   state.parameterId = state.manifest.defaults.parameter_id;

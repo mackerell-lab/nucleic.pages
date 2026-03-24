@@ -319,6 +319,7 @@ function parsePdbManifest(text) {
       backboneRows: parseIntSafe(cols[indexOf.backbone_rows]),
       sugarRows: parseIntSafe(cols[indexOf.sugar_rows]),
       puckerRows: parseIntSafe(cols[indexOf.pucker_rows]),
+      hetNames: cols[indexOf.het_names] || "-",
     };
     rows.push(row);
     maxPid = Math.max(maxPid, pid);
@@ -670,7 +671,7 @@ function renderUniverseTablePage() {
       <td>${escapeHtml(row.method)}</td>
       <td>${escapeHtml(resolutionLabel(row))}</td>
       <td>${escapeHtml(cleanlinessLabel(row))}</td>
-      <td>${row.hasAnyHet ? "Yes" : "No"}</td>
+      <td>${escapeHtml(row.hasAnyHet ? row.hetNames : "-")}</td>
       <td>${formatInt(row.residueCount)}</td>
     </tr>
   `).join("");

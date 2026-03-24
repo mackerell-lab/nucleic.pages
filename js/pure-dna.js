@@ -37,8 +37,12 @@ function el(id) {
   return document.getElementById(id);
 }
 
-function setStatus(text) {
-  el("statusNote").textContent = text;
+function setHeroNote(text) {
+  el("heroNote").textContent = text;
+}
+
+function setPlotStatus(text) {
+  el("plotStatusNote").textContent = text;
 }
 
 function formatInt(value) {
@@ -638,6 +642,14 @@ function renderOverviewCards() {
   }
 }
 
+function renderHeroNote() {
+  const { universe } = state.manifest;
+  setHeroNote(
+    `${formatInt(universe.pdb_entries)} PDB entries in the master pool. ` +
+    `Universe Snapshot above stays fixed to complete-database totals; only the lower Distribution View changes with the filter stack.`,
+  );
+}
+
 function cleanlinessLabel(row) {
   if (row.passesConservative) return "No extra het";
   if (row.passesMw100) return "No het >100 Da";
@@ -825,7 +837,7 @@ function renderFilters() {
 async function ensureFamilyLoaded(familyId) {
   if (state.familyCache.has(familyId)) return state.familyCache.get(familyId);
   const familyMeta = state.manifest.families[familyId];
-  setStatus(`Loading ${familyMeta.display_name} rows...`);
+  setPlotStatus(`Loading ${familyMeta.display_name} rows...`);
   const text = await fetchTextMaybeGzip(`./assets/pure_dna_v1/${pathFromRelative(familyMeta.file)}`);
   const parsed = parseFamilyTable(text, familyId, familyMeta.param_ids, state.pdbManifest.maxPid);
   state.familyCache.set(familyId, parsed);
@@ -1037,7 +1049,7 @@ async function renderPlot() {
 
   if (!traces.length) {
     el("plot").innerHTML = `<div class="empty-state">No observations match the current filter stack.</div>`;
-    setStatus(`Loaded ${currentFamilyMeta().display_name}. No rows match the current filters.`);
+    setPlotStatus(`Loaded ${currentFamilyMeta().display_name}. No rows match the current filters.`);
     return;
   }
 
@@ -1047,7 +1059,7 @@ async function renderPlot() {
     displayModeBar: false,
   });
 
-  setStatus(
+  setPlotStatus(
     `${currentFamilyMeta().display_name}: ${formatInt(familyData.rowCount)} total family rows cached. ` +
     `${formatInt(allowed.total)} PDB entries pass the current PDB-level filters. ` +
     `${formatInt(accumulation.totalVisibleObservations)} plotted observations remain for the current parameter and display window.`,
@@ -1060,7 +1072,8 @@ async function renderFiltersAndPlot() {
 }
 
 async function boot() {
-  setStatus("Loading page manifest...");
+  setHeroNote("Loading page manifest...");
+  setPlotStatus("Waiting for database assets...");
   state.manifest = await fetchJson(MANIFEST_PATH);
   state.parameterMetaById = buildParameterMeta(state.manifest);
   state.cleanliness = state.manifest.defaults.cleanliness;
@@ -1071,10 +1084,11 @@ async function boot() {
   state.familyId = state.manifest.defaults.family_id;
   state.parameterId = state.manifest.defaults.parameter_id;
 
-  setStatus("Loading PDB manifest...");
+  setHeroNote("Loading PDB manifest...");
   const pdbManifestText = await fetchTextMaybeGzip(`./assets/pure_dna_v1/${pathFromRelative(state.manifest.file_map.pdb_manifest)}`);
   state.pdbManifest = parsePdbManifest(pdbManifestText);
 
+  renderHeroNote();
   renderOverviewCards();
   bindUniverseDrawer();
   await renderFiltersAndPlot();
@@ -1082,5 +1096,6 @@ async function boot() {
 
 boot().catch((error) => {
   console.error(error);
-  setStatus(`Failed to load explorer: ${error.message}`);
+  setHeroNote(`Failed to load explorer: ${error.message}`);
+  setPlotStatus(`Failed to load explorer: ${error.message}`);
 });

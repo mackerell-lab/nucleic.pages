@@ -76,6 +76,10 @@ h1 {
   font-size: 14px;
 }
 
+.plot-note {
+  margin-bottom: 14px;
+}
+
 .panel {
   padding: 18px;
   border-radius: 22px;

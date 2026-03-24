@@ -21,6 +21,27 @@ const FORM_META = {
   zdna: { label: "Z-DNA", color: "#146c43" },
 };
 
+const DISPLAY_RANGES = {
+  shear: [-3, 3],
+  stretch: [-1, 1],
+  stagger: [-2, 2],
+  buckle: [-40, 40],
+  propeller: [-40, 10],
+  opening: [-20, 20],
+  shift: [-3, 3],
+  slide: [-3, 3],
+  rise: [2, 5],
+  tilt: [-20, 20],
+  roll: [-20, 30],
+  twist: [15, 55],
+  x_disp: [-4, 4],
+  y_disp: [-4, 4],
+  h_rise: [2.5, 4],
+  inclination: [-40, 40],
+  tip: [-40, 40],
+  h_twist: [0, 60],
+};
+
 function el(id) {
   return document.getElementById(id);
 }
@@ -119,8 +140,8 @@ function selectedFormLabel() {
   return FORM_OPTIONS.find((item) => item.form_id === state.formId)?.display_name ?? "-";
 }
 
-function parameterRange(param) {
-  return param.recommended_range ?? null;
+function parameterRange(paramId, param) {
+  return DISPLAY_RANGES[paramId] ?? param.recommended_range ?? null;
 }
 
 function finiteValues(values, range) {
@@ -252,7 +273,7 @@ function renderSeriesSummary(range) {
     card.innerHTML = `
       <span class="kind" style="color:${meta.color}">${meta.label}</span>
       <h3>${param.display_name}</h3>
-      <p class="meta">Smoothed density over the registry range.</p>
+      <p class="meta">Smoothed density over the display window.</p>
       <div class="metric-list">
         <div class="metric">
           <span class="metric-label">n</span>
@@ -284,7 +305,7 @@ function renderPlot() {
   const param = currentParam();
   const unit = param.unit === "A" ? "Å" : param.unit;
   const titleUnit = unit ? ` (${unit})` : "";
-  const range = parameterRange(param);
+  const range = parameterRange(state.parameterId, param);
   const traces = selectedFormIds().map((formId) =>
     buildDensityTrace(param, formId, range, {
       lineWidth: state.formId === "all" ? 3 : 4,
@@ -350,7 +371,7 @@ function renderFamilyOverview() {
     root.appendChild(card);
 
     const plotRoot = card.querySelector(".mini-plot");
-    const range = parameterRange(param);
+    const range = parameterRange(paramId, param);
     const traces = formIds.map((formId) =>
       buildDensityTrace(param, formId, range, {
         lineWidth: paramId === state.parameterId ? 2.8 : 2.2,

@@ -511,9 +511,19 @@ function buildAllowedPidMask() {
   return { mask, total };
 }
 
+function groupAllowedRowsByForm(allowedPidMask) {
+  const groups = Object.fromEntries(Object.keys(FORM_META).map((formId) => [formId, []]));
+  for (const row of state.pdbManifest.rows) {
+    if (!allowedPidMask[row.pid]) continue;
+    if (groups[row.form]) groups[row.form].push(row);
+  }
+  return groups;
+}
+
 function rowPassesObservationFilters(familyData, rowIndex) {
   if (state.terminalPolicy === "exclude" && familyData.edgeFlag[rowIndex] === 1) return false;
-  if (familyData.context && !state.contexts.has(familyData.context[rowIndex])) return false;
+  const contextValue = familyData.context?.[rowIndex];
+  if (familyData.context && contextValue && !state.contexts.has(contextValue)) return false;
   return true;
 }
 
@@ -625,14 +635,15 @@ function finalizeAccumulator(acc, paramMeta, range, displayCut = 0, shiftBins = 
   return { x, y: density, hoverAngles, hoverDisplayAngles, displayCut, axisMode, summary };
 }
 
-function accumulateVisibleSeries(familyData, allowedPidMask, paramId, paramMeta, range) {
+function accumulateVisibleSeries(familyData, allowedPidMask, paramId, paramMeta, range, allowedRowsByForm = null) {
   const bins = paramMeta.isCircular ? 72 : 64;
   const seriesIds = selectedFormIds();
   const seriesAcc = Object.fromEntries(seriesIds.map((formId) => [formId, initAccumulator(paramMeta, bins)]));
   let totalVisibleObservations = 0;
 
   for (const formId of seriesIds) {
-    const metaRows = state.pdbManifest.rows.filter((row) => allowedPidMask[row.pid] && row.form === formId);
+    const metaRows = allowedRowsByForm?.[formId]
+      ?? state.pdbManifest.rows.filter((row) => allowedPidMask[row.pid] && row.form === formId);
     for (const row of metaRows) {
       const start = familyData.pidStart[row.pid];
       const count = familyData.pidCount[row.pid];
@@ -1099,13 +1110,17 @@ function renderSummaryCards(series, paramMeta) {
 
 function renderFamilyOverview(familyData, allowedMask) {
   const root = el("familyOverview");
+  for (const plotNode of root.querySelectorAll(".mini-plot")) {
+    if (plotNode.data) Plotly.purge(plotNode);
+  }
   root.innerHTML = "";
   const familyMeta = currentFamilyMeta();
+  const allowedRowsByForm = groupAllowedRowsByForm(allowedMask);
 
   for (const paramId of familyMeta.param_ids) {
     const paramMeta = currentParameterMeta(paramId);
     const range = computeEffectiveRange(paramMeta, familyData, paramId, allowedMask);
-    const accumulation = accumulateVisibleSeries(familyData, allowedMask, paramId, paramMeta, range);
+    const accumulation = accumulateVisibleSeries(familyData, allowedMask, paramId, paramMeta, range, allowedRowsByForm);
     const totalRows = Object.values(accumulation.series).reduce((sum, entry) => sum + entry.summary.n, 0);
 
     const panel = document.createElement("button");
@@ -1189,8 +1204,9 @@ async function renderPlot(options = {}) {
   const familyData = await ensureFamilyLoaded(state.familyId);
   const paramMeta = currentParameterMeta();
   const allowed = buildAllowedPidMask();
+  const allowedRowsByForm = groupAllowedRowsByForm(allowed.mask);
   const range = computeEffectiveRange(paramMeta, familyData, state.parameterId, allowed.mask);
-  const accumulation = accumulateVisibleSeries(familyData, allowed.mask, state.parameterId, paramMeta, range);
+  const accumulation = accumulateVisibleSeries(familyData, allowed.mask, state.parameterId, paramMeta, range, allowedRowsByForm);
   const traces = Object.entries(accumulation.series)
     .filter(([, seriesData]) => seriesData.summary.n > 0)
     .map(([formId, seriesData]) => buildTrace(formId, seriesData, paramMeta));
@@ -1201,7 +1217,9 @@ async function renderPlot(options = {}) {
   else renderFamilyOverview(familyData, allowed.mask);
 
   if (!traces.length) {
-    el("plot").innerHTML = `<div class="empty-state">No observations match the current filter stack.</div>`;
+    const plotNode = el("plot");
+    if (plotNode.data) Plotly.purge(plotNode);
+    plotNode.innerHTML = `<div class="empty-state">No observations match the current filter stack.</div>`;
     return;
   }
 
@@ -1245,6 +1263,24 @@ async function boot() {
   await renderFiltersAndPlot();
 }
 
+function renderBootError(error) {
+  const shell = document.querySelector(".shell");
+  if (!shell) return;
+  const message = escapeHtml(error?.message || "Unknown error");
+  shell.innerHTML = `
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Failed to load Pure DNA Explorer</h2>
+        <p>The local assets could not be loaded. Refresh the page or check the browser console for details.</p>
+      </div>
+      <div class="card">
+        <p class="meta">${message}</p>
+      </div>
+    </section>
+  `;
+}
+
 boot().catch((error) => {
   console.error(error);
+  renderBootError(error);
 });

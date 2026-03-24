@@ -1,7 +1,7 @@
 {
   "version": "pure_dna",
   "display_name": "Pure DNA Explorer",
-  "generated_at": "2026-03-24T17:21:57.877Z",
+  "generated_at": "2026-03-24T17:55:39.835Z",
   "universe": {
     "pdb_entries": 1830,
     "forms": {
@@ -88,19 +88,19 @@
       },
       {
         "id": "le_3_0",
-        "label": "<= 3.0 A"
+        "label": "<= 3.0 Å"
       },
       {
         "id": "le_2_5",
-        "label": "<= 2.5 A"
+        "label": "<= 2.5 Å"
       },
       {
         "id": "le_2_0",
-        "label": "<= 2.0 A"
+        "label": "<= 2.0 Å"
       },
       {
         "id": "le_1_6",
-        "label": "<= 1.6 A"
+        "label": "<= 1.6 Å"
       }
     ],
     "form_options": [

@@ -29,38 +29,6 @@ body {
   padding: 28px 18px 48px;
 }
 
-.page-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.page-link,
-.inline-link {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.page-link {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 8px 12px;
-  background: rgba(255, 250, 241, 0.84);
-  font-size: 14px;
-}
-
-.page-link.active {
-  background: #e7f1fb;
-  border-color: rgba(23, 74, 126, 0.45);
-}
-
-.inline-link {
-  display: inline-block;
-  margin-top: 10px;
-  font-size: 14px;
-}
-
 .hero {
   display: grid;
   grid-template-columns: 1fr minmax(240px, 320px);
@@ -415,10 +383,6 @@ select {
 @media (max-width: 840px) {
   .hero {
     grid-template-columns: 1fr;
-  }
-
-  .page-nav {
-    margin-bottom: 14px;
   }
 }
 

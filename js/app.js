@@ -2,6 +2,7 @@ const ASSET_PATH = "./assets/mvp_core_assets.json";
 
 const state = {
   assets: null,
+  paramMetaById: null,
   datasetId: "abz_curated",
   formId: "all",
   familyId: "base_pair",
@@ -40,6 +41,9 @@ const DISPLAY_RANGES = {
   inclination: [-40, 40],
   tip: [-40, 40],
   h_twist: [0, 60],
+  epsilon: [0, 360],
+  chi: [0, 360],
+  p: [0, 360],
 };
 
 function el(id) {
@@ -89,6 +93,39 @@ function currentFamily() {
 
 function currentParam() {
   return currentFamily().params[state.parameterId];
+}
+
+function buildParamMetaById(parameterRegistry = []) {
+  const map = {};
+  for (const entry of parameterRegistry) {
+    const valueType =
+      entry.value_type ?? (entry.is_periodic ? "numeric_circular" : "numeric_linear");
+    map[entry.param_id] = {
+      ...entry,
+      valueType,
+      period: entry.period ?? (valueType === "numeric_circular" ? 360 : null),
+      summaryMode: entry.summary_mode ?? (valueType === "numeric_circular" ? "circular" : "linear"),
+      densityMode:
+        entry.density_mode ??
+        (valueType === "numeric_circular" ? "circular_hist_smooth" : "linear_hist_smooth"),
+    };
+  }
+  return map;
+}
+
+function paramMetaFor(paramId) {
+  return (
+    state.paramMetaById?.[paramId] ?? {
+      valueType: "numeric_linear",
+      period: null,
+      summaryMode: "linear",
+      densityMode: "linear_hist_smooth",
+    }
+  );
+}
+
+function currentParamMeta() {
+  return paramMetaFor(state.parameterId);
 }
 
 function fillSelect(select, items, valueKey, labelKey, currentValue) {
@@ -163,6 +200,11 @@ function gaussianKernel(radius, sigma) {
   return kernel.map((value) => value / sum);
 }
 
+function wrapPeriodicValue(value, period) {
+  const wrapped = value % period;
+  return wrapped < 0 ? wrapped + period : wrapped;
+}
+
 function smoothHistogram(values, range, bins = 72, sigma = 1.6) {
   const [vmin, vmax] = range;
   const xs = finiteValues(values, range);
@@ -194,6 +236,36 @@ function smoothHistogram(values, range, bins = 72, sigma = 1.6) {
   return { x: centers, y: density, n: xs.length };
 }
 
+function smoothCircularHistogram(values, period = 360, bins = 72, sigma = 1.6) {
+  const xs = values
+    .filter((value) => Number.isFinite(value))
+    .map((value) => wrapPeriodicValue(value, period));
+  const width = period / bins;
+  const counts = new Array(bins).fill(0);
+
+  for (const value of xs) {
+    let idx = Math.floor(value / width);
+    if (idx >= bins) idx = 0;
+    counts[idx] += 1;
+  }
+
+  const radius = Math.max(2, Math.ceil(3 * sigma));
+  const kernel = gaussianKernel(radius, sigma);
+  const smooth = counts.map((_, index) => {
+    let acc = 0;
+    for (let k = -radius; k <= radius; k += 1) {
+      const j = (index + k + bins) % bins;
+      acc += counts[j] * kernel[k + radius];
+    }
+    return acc;
+  });
+
+  const total = smooth.reduce((sum, value) => sum + value, 0);
+  const density = total > 0 ? smooth.map((value) => value / total) : smooth;
+  const centers = density.map((_, index) => width * (index + 0.5));
+  return { x: centers, y: density, n: xs.length };
+}
+
 function percentile(sortedValues, q) {
   if (!sortedValues.length) return null;
   const pos = (sortedValues.length - 1) * q;
@@ -221,15 +293,60 @@ function summarize(values, range) {
   };
 }
 
+function circularSummarize(values, period = 360) {
+  const xs = values
+    .filter((value) => Number.isFinite(value))
+    .map((value) => wrapPeriodicValue(value, period));
+  const n = xs.length;
+  if (!n) {
+    return { n: 0, circMean: null, circStd: null };
+  }
+
+  const scale = (2 * Math.PI) / period;
+  let meanSin = 0;
+  let meanCos = 0;
+  for (const value of xs) {
+    const theta = value * scale;
+    meanSin += Math.sin(theta);
+    meanCos += Math.cos(theta);
+  }
+  meanSin /= n;
+  meanCos /= n;
+
+  let meanAngle = Math.atan2(meanSin, meanCos);
+  if (meanAngle < 0) meanAngle += 2 * Math.PI;
+  const circMean = meanAngle / scale;
+  const resultant = Math.min(1, Math.max(0, Math.hypot(meanSin, meanCos)));
+  const circStd =
+    resultant > 1e-12 ? Math.sqrt(-2 * Math.log(resultant)) / scale : null;
+
+  return { n, circMean, circStd };
+}
+
 function formatNumber(value, digits = 2) {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   return Number(value).toFixed(digits);
 }
 
-function buildDensityTrace(param, formId, range, options = {}) {
+function xAxisTicks(meta) {
+  if (meta.valueType === "numeric_circular" && meta.period === 360) {
+    return {
+      tickmode: "array",
+      tickvals: [0, 120, 240, 360],
+      ticktext: ["0", "120", "240", "360"],
+    };
+  }
+  return {};
+}
+
+function buildDensityTrace(paramId, param, formId, range, options = {}) {
+  const meta = paramMetaFor(paramId);
   const unit = param.unit === "A" ? "Å" : param.unit;
   const titleUnit = unit ? ` (${unit})` : "";
-  const smoothed = smoothHistogram(param.forms[formId], range, options.bins ?? 96, options.sigma ?? 1.8);
+  const smoothed =
+    meta.valueType === "numeric_circular"
+      ? smoothCircularHistogram(param.forms[formId], meta.period ?? 360, options.bins ?? 96, options.sigma ?? 1.8)
+      : smoothHistogram(param.forms[formId], range, options.bins ?? 96, options.sigma ?? 1.8);
   return {
     type: "scatter",
     mode: "lines",
@@ -264,17 +381,35 @@ function renderStats() {
 function renderSeriesSummary(range) {
   const root = el("seriesSummary");
   const param = currentParam();
+  const metaSpec = currentParamMeta();
   root.innerHTML = "";
   for (const formId of selectedFormIds()) {
     const meta = FORM_META[formId];
-    const stats = summarize(param.forms[formId], range);
-    const card = document.createElement("article");
-    card.className = "card";
-    card.innerHTML = `
-      <span class="kind" style="color:${meta.color}">${meta.label}</span>
-      <h3>${param.display_name}</h3>
-      <p class="meta">Smoothed density over the display window.</p>
-      <div class="metric-list">
+    const stats =
+      metaSpec.valueType === "numeric_circular"
+        ? circularSummarize(param.forms[formId], metaSpec.period ?? 360)
+        : summarize(param.forms[formId], range);
+    const summaryText =
+      metaSpec.valueType === "numeric_circular"
+        ? "Wrapped summary over the periodic domain."
+        : "Smoothed density over the display window.";
+    const metricsHtml =
+      metaSpec.valueType === "numeric_circular"
+        ? `
+        <div class="metric">
+          <span class="metric-label">n</span>
+          <span class="metric-value">${stats.n.toLocaleString()}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Circ mean</span>
+          <span class="metric-value">${formatNumber(stats.circMean)}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Circ std</span>
+          <span class="metric-value">${formatNumber(stats.circStd)}</span>
+        </div>
+      `
+        : `
         <div class="metric">
           <span class="metric-label">n</span>
           <span class="metric-value">${stats.n.toLocaleString()}</span>
@@ -295,7 +430,14 @@ function renderSeriesSummary(range) {
           <span class="metric-label">p95</span>
           <span class="metric-value">${formatNumber(stats.p95)}</span>
         </div>
-      </div>
+      `;
+    const card = document.createElement("article");
+    card.className = "card";
+    card.innerHTML = `
+      <span class="kind" style="color:${meta.color}">${meta.label}</span>
+      <h3>${param.display_name}</h3>
+      <p class="meta">${summaryText}</p>
+      <div class="metric-list">${metricsHtml}</div>
     `;
     root.appendChild(card);
   }
@@ -303,11 +445,12 @@ function renderSeriesSummary(range) {
 
 function renderPlot() {
   const param = currentParam();
+  const meta = currentParamMeta();
   const unit = param.unit === "A" ? "Å" : param.unit;
   const titleUnit = unit ? ` (${unit})` : "";
   const range = parameterRange(state.parameterId, param);
   const traces = selectedFormIds().map((formId) =>
-    buildDensityTrace(param, formId, range, {
+    buildDensityTrace(state.parameterId, param, formId, range, {
       lineWidth: state.formId === "all" ? 3 : 4,
       fill: true,
     })
@@ -330,6 +473,7 @@ function renderPlot() {
         title: `${param.display_name}${titleUnit}`,
         zeroline: false,
         range: range ?? undefined,
+        ...xAxisTicks(meta),
         showgrid: true,
         gridcolor: "rgba(106, 98, 86, 0.12)",
       },
@@ -372,8 +516,9 @@ function renderFamilyOverview() {
 
     const plotRoot = card.querySelector(".mini-plot");
     const range = parameterRange(paramId, param);
+    const paramMeta = paramMetaFor(paramId);
     const traces = formIds.map((formId) =>
-      buildDensityTrace(param, formId, range, {
+      buildDensityTrace(paramId, param, formId, range, {
         lineWidth: paramId === state.parameterId ? 2.8 : 2.2,
         fill: false,
         showLegend: false,
@@ -392,6 +537,7 @@ function renderFamilyOverview() {
         height: 220,
         xaxis: {
           range: range ?? undefined,
+          ...xAxisTicks(paramMeta),
           zeroline: false,
           showgrid: true,
           gridcolor: "rgba(106, 98, 86, 0.12)",
@@ -425,7 +571,7 @@ function renderAll() {
   renderPlot();
   renderFamilyOverview();
   el("statusNote").textContent =
-    "ABZ explorer loaded with density curves, visible-series summaries, and a family overview grid for fast parameter comparison.";
+    "ABZ explorer loaded with core geometry curves, periodic summaries, and a family overview grid for fast parameter comparison.";
 }
 
 async function bootstrap() {
@@ -434,6 +580,7 @@ async function bootstrap() {
     throw new Error(`Failed to load ${ASSET_PATH}`);
   }
   state.assets = await response.json();
+  state.paramMetaById = buildParamMetaById(state.assets.parameter_registry);
 
   renderDatasetCards();
   renderAll();

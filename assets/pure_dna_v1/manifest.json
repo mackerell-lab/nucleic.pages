@@ -1,0 +1,354 @@
+{
+  "version": "pure_dna_v1",
+  "display_name": "Pure DNA Explorer",
+  "generated_at": "2026-03-24T13:46:19.800Z",
+  "universe": {
+    "pdb_entries": 1830,
+    "forms": {
+      "adna": 157,
+      "bdna": 1425,
+      "zdna": 122,
+      "other": 126
+    },
+    "methods": {
+      "xray": 1240,
+      "nmr": 580,
+      "em": 9,
+      "other": 1
+    },
+    "cleanliness": {
+      "all": 1830,
+      "conservative": 714,
+      "relaxed": 1228,
+      "mw100": 1237
+    }
+  },
+  "defaults": {
+    "cleanliness": "conservative",
+    "methods": [
+      "xray",
+      "nmr"
+    ],
+    "resolution": "any",
+    "form": "all",
+    "terminal_policy": "include",
+    "family_id": "backbone",
+    "parameter_id": "alpha"
+  },
+  "controls": {
+    "cleanliness_options": [
+      {
+        "id": "all",
+        "label": "All"
+      },
+      {
+        "id": "conservative",
+        "label": "No extra het"
+      },
+      {
+        "id": "relaxed",
+        "label": "Only inorganic-like het"
+      },
+      {
+        "id": "mw100",
+        "label": "No het >100 Da"
+      }
+    ],
+    "method_options": [
+      {
+        "id": "xray",
+        "label": "X-ray"
+      },
+      {
+        "id": "nmr",
+        "label": "NMR"
+      },
+      {
+        "id": "em",
+        "label": "EM"
+      },
+      {
+        "id": "other",
+        "label": "Other"
+      }
+    ],
+    "resolution_options": [
+      {
+        "id": "any",
+        "label": "Any"
+      },
+      {
+        "id": "known",
+        "label": "Known only"
+      },
+      {
+        "id": "le_3_0",
+        "label": "<= 3.0 A"
+      },
+      {
+        "id": "le_2_5",
+        "label": "<= 2.5 A"
+      },
+      {
+        "id": "le_2_0",
+        "label": "<= 2.0 A"
+      },
+      {
+        "id": "le_1_6",
+        "label": "<= 1.6 A"
+      }
+    ],
+    "form_options": [
+      {
+        "id": "all",
+        "label": "All"
+      },
+      {
+        "id": "adna",
+        "label": "A-DNA"
+      },
+      {
+        "id": "bdna",
+        "label": "B-DNA"
+      },
+      {
+        "id": "zdna",
+        "label": "Z-DNA"
+      },
+      {
+        "id": "other",
+        "label": "Other"
+      }
+    ],
+    "terminal_policy_options": [
+      {
+        "id": "include",
+        "label": "Include termini"
+      },
+      {
+        "id": "exclude",
+        "label": "Exclude termini"
+      }
+    ]
+  },
+  "file_map": {
+    "pdb_manifest": "./pdb_manifest.tsv.gz"
+  },
+  "families": {
+    "backbone": {
+      "family_id": "backbone",
+      "display_name": "Backbone",
+      "file": "./backbone.tsv.gz",
+      "row_count": 53853,
+      "param_ids": [
+        "alpha",
+        "beta",
+        "gamma",
+        "delta",
+        "epsilon",
+        "zeta",
+        "chi"
+      ]
+    },
+    "sugar_torsion": {
+      "family_id": "sugar_torsion",
+      "display_name": "Sugar Torsion",
+      "file": "./sugar_torsion.tsv.gz",
+      "row_count": 53853,
+      "param_ids": [
+        "v0",
+        "v1",
+        "v2",
+        "v3",
+        "v4"
+      ]
+    },
+    "pucker": {
+      "family_id": "pucker",
+      "display_name": "Pucker",
+      "file": "./pucker.tsv.gz",
+      "row_count": 53853,
+      "param_ids": [
+        "p",
+        "tm",
+        "sszp",
+        "dp"
+      ]
+    }
+  },
+  "parameter_registry": [
+    {
+      "param_id": "alpha",
+      "family_id": "backbone",
+      "display_name": "alpha",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "beta",
+      "family_id": "backbone",
+      "display_name": "beta",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "gamma",
+      "family_id": "backbone",
+      "display_name": "gamma",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "delta",
+      "family_id": "backbone",
+      "display_name": "delta",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "epsilon",
+      "family_id": "backbone",
+      "display_name": "epsilon",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "zeta",
+      "family_id": "backbone",
+      "display_name": "zeta",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "chi",
+      "family_id": "backbone",
+      "display_name": "chi",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "v0",
+      "family_id": "sugar_torsion",
+      "display_name": "v0",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "v1",
+      "family_id": "sugar_torsion",
+      "display_name": "v1",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "v2",
+      "family_id": "sugar_torsion",
+      "display_name": "v2",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "v3",
+      "family_id": "sugar_torsion",
+      "display_name": "v3",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "v4",
+      "family_id": "sugar_torsion",
+      "display_name": "v4",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "p",
+      "family_id": "pucker",
+      "display_name": "Phase",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "tm",
+      "family_id": "pucker",
+      "display_name": "tm",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        0,
+        70
+      ]
+    },
+    {
+      "param_id": "sszp",
+      "family_id": "pucker",
+      "display_name": "ssZp",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        -4,
+        4
+      ]
+    },
+    {
+      "param_id": "dp",
+      "family_id": "pucker",
+      "display_name": "Dp",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        0,
+        6
+      ]
+    }
+  ]
+}

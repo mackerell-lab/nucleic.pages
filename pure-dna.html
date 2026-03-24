@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pure DNA Explorer</title>
+    <link rel="stylesheet" href="./css/main.css" />
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  </head>
+  <body>
+    <div class="shell">
+      <nav class="page-nav" aria-label="Page navigation">
+        <a class="page-link" href="./index.html">ABZ Curated</a>
+        <a class="page-link active" href="./pure-dna.html">Pure DNA Explorer</a>
+      </nav>
+
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Phase 1</p>
+          <h1>Pure DNA Explorer</h1>
+          <p class="lede">
+            Filterable residue-level statistics across the full pure-DNA pool,
+            backed by local PDB-derived tables and loaded on demand from split
+            `TSV.gz` family files.
+          </p>
+        </div>
+        <div class="hero-note" id="statusNote">
+          Booting manifest...
+        </div>
+      </header>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Universe Snapshot</h2>
+          <p>
+            Base universe, method mix, form mix, and cleanliness tiers derived
+            from the local pure-DNA pool.
+          </p>
+        </div>
+        <div id="overviewCards" class="card-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Filter Stack</h2>
+          <p>
+            PDB-level filters are applied first. Terminal policy is applied only
+            at the observation layer.
+          </p>
+        </div>
+
+        <div class="filter-layout">
+          <div class="filter-cluster">
+            <span class="cluster-title">Cleanliness</span>
+            <div id="cleanlinessGroup" class="toggle-group"></div>
+          </div>
+
+          <div class="filter-cluster">
+            <span class="cluster-title">Method</span>
+            <div id="methodGroup" class="toggle-group multi"></div>
+          </div>
+
+          <div class="filter-cluster">
+            <span class="cluster-title">Resolution</span>
+            <div id="resolutionGroup" class="toggle-group"></div>
+          </div>
+
+          <div class="filter-cluster">
+            <span class="cluster-title">Form</span>
+            <div id="formGroup" class="toggle-group"></div>
+          </div>
+
+          <div class="filter-cluster">
+            <span class="cluster-title">Terminal Policy</span>
+            <div id="terminalGroup" class="toggle-group"></div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <label>
+            Family
+            <select id="familySelect"></select>
+          </label>
+          <label>
+            Parameter
+            <select id="parameterSelect"></select>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Distribution View</h2>
+          <p>
+            The current family file is cached client-side. Histogram bins and
+            summary metrics are recomputed from typed arrays without rebuilding
+            large filtered value lists.
+          </p>
+        </div>
+
+        <div class="stats-strip">
+          <div class="stat-box">
+            <span class="stat-label">Filtered PDB entries</span>
+            <span class="stat-value" id="filteredPdbCount">-</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Visible observations</span>
+            <span class="stat-value" id="filteredObservationCount">-</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Loaded family rows</span>
+            <span class="stat-value" id="loadedFamilyRows">-</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Form scope</span>
+            <span class="stat-value" id="currentFormScope">-</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Method scope</span>
+            <span class="stat-value" id="currentMethodScope">-</span>
+          </div>
+        </div>
+
+        <div id="plot" class="plot-panel"></div>
+
+        <div class="panel-subhead">
+          <h3>Visible Series Summary</h3>
+          <p>Summary cards are generated from the same filtered observation stream used to draw the plot.</p>
+        </div>
+        <div id="seriesSummary" class="card-grid compact-grid"></div>
+      </section>
+    </div>
+
+    <script type="module" src="./js/pure-dna.js"></script>
+  </body>
+</html>

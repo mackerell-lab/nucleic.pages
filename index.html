@@ -9,18 +9,44 @@
   </head>
   <body>
     <div class="shell">
+      <nav class="page-nav" aria-label="Page navigation">
+        <a class="page-link active" href="./index.html">ABZ Curated</a>
+        <a class="page-link" href="./pure-dna.html">Pure DNA Explorer</a>
+      </nav>
+
       <header class="hero">
         <div>
           <p class="eyebrow">MVP</p>
           <h1>Nucleic Geometry Explorer</h1>
           <p class="lede">
-            First end-to-end slice: core ABZ geometry families plus the first
-            periodic additions for backbone and pucker analysis, backed by
-            existing reference statistics and a clean registry-first page layer.
+            Curated ABZ explorer with a clean-room page layer: core geometry,
+            full backbone torsion, sugar torsion, and pucker distributions for
+            A 102 / B 49 / Z 75 structures.
           </p>
         </div>
         <div class="hero-note" id="statusNote">Loading assets...</div>
       </header>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Pages</h2>
+          <p>Curated ABZ stays here. The new Pure DNA workbench is a separate page so the original small-page workflow stays intact.</p>
+        </div>
+        <div class="card-grid compact-grid">
+          <article class="card active">
+            <span class="kind">Current</span>
+            <h3>ABZ Curated</h3>
+            <p class="meta">Focused overlay explorer for the curated A/B/Z set.</p>
+            <a class="inline-link" href="./index.html">Open curated page</a>
+          </article>
+          <article class="card">
+            <span class="kind">New</span>
+            <h3>Pure DNA Explorer</h3>
+            <p class="meta">Filterable master-pool statistics with split `TSV.gz` assets and on-demand family loading.</p>
+            <a class="inline-link" href="./pure-dna.html">Open pure DNA page</a>
+          </article>
+        </div>
+      </section>
 
       <section class="panel">
         <div class="panel-head">
@@ -34,8 +60,8 @@
         <div class="panel-head">
           <h2>ABZ Parameter Explorer</h2>
           <p>
-            Current scope stays compact: 18 core geometry parameters plus the
-            first periodic additions for epsilon, chi, and phase.
+            Current curated scope covers 33 parameters across base-pair, step,
+            helical, backbone, sugar-torsion, and pucker families.
           </p>
         </div>
 

@@ -29,6 +29,38 @@ body {
   padding: 28px 18px 48px;
 }
 
+.page-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.page-link,
+.inline-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.page-link {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 250, 241, 0.84);
+  font-size: 14px;
+}
+
+.page-link.active {
+  background: #e7f1fb;
+  border-color: rgba(23, 74, 126, 0.45);
+}
+
+.inline-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 14px;
+}
+
 .hero {
   display: grid;
   grid-template-columns: 1fr minmax(240px, 320px);
@@ -224,6 +256,54 @@ select {
   color: var(--ink);
 }
 
+.filter-layout {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.filter-cluster {
+  display: grid;
+  gap: 8px;
+}
+
+.cluster-title {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.toggle-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.toggle-btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fffdf7;
+  color: var(--ink);
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.toggle-btn:hover {
+  border-color: rgba(23, 74, 126, 0.38);
+  transform: translateY(-1px);
+}
+
+.toggle-btn.active {
+  background: #e7f1fb;
+  border-color: rgba(23, 74, 126, 0.5);
+  color: var(--accent);
+}
+
 .stats-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -254,6 +334,14 @@ select {
     linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,250,241,0.72));
   padding: 10px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  min-height: 420px;
+  color: var(--muted);
+  font-size: 16px;
 }
 
 .small-multiple-grid {
@@ -327,6 +415,10 @@ select {
 @media (max-width: 840px) {
   .hero {
     grid-template-columns: 1fr;
+  }
+
+  .page-nav {
+    margin-bottom: 14px;
   }
 }
 

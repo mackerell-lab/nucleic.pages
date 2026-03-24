@@ -571,7 +571,7 @@ function renderAll() {
   renderPlot();
   renderFamilyOverview();
   el("statusNote").textContent =
-    "ABZ explorer loaded with core geometry curves, periodic summaries, and a family overview grid for fast parameter comparison.";
+    "ABZ curated explorer loaded with geometry, backbone, sugar-torsion, and pucker families for rapid form-by-form comparison.";
 }
 
 async function bootstrap() {

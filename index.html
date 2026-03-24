@@ -12,14 +12,6 @@
       <header class="hero">
         <div>
           <h1>Pure DNA Explorer</h1>
-          <p class="lede">
-            Filterable DNA parameter statistics across the full pure-DNA pool,
-            backed by local PDB-derived tables and loaded on demand from split
-            `TSV.gz` family files.
-          </p>
-        </div>
-        <div class="hero-note" id="heroNote">
-          Booting manifest...
         </div>
       </header>
 
@@ -27,21 +19,24 @@
         <div class="panel-head">
           <h2>Universe Snapshot</h2>
           <p>
-            Master-pool PDB counts plus precomputed family row totals derived
-            from the local pure-DNA pool.
+            Complete-database PDB counts and precomputed family row totals for
+            the local pure-DNA database used by this site.
           </p>
         </div>
         <div id="overviewCards" class="card-grid"></div>
         <div class="panel-subhead collapse-toggle-row">
-          <h3>Universe Entry Table</h3>
+          <div>
+            <h3>Database PDB Table</h3>
+            <p>Open to inspect the exact PDB entries used in this database.</p>
+          </div>
           <button type="button" id="universeToggle" class="toggle-btn collapse-toggle" aria-expanded="false">
-            Open table
+            Show PDB entries
           </button>
         </div>
         <div id="universeDrawer" class="drawer-panel" hidden>
           <div class="drawer-toolbar">
             <p>
-              Full pure-DNA master pool, rendered only while this drawer is open.
+              Each row is one PDB entry from the complete pure-DNA database used by this site.
             </p>
             <div class="drawer-pager">
               <button type="button" id="universePrev" class="toggle-btn">Prev</button>
@@ -125,14 +120,10 @@
         <div class="panel-head">
           <h2>Distribution View</h2>
           <p>
-            The current family file is cached client-side. PDB-level filters
-            decide which entries are eligible; plotted observations are then
-            counted from the current parameter and display window.
+            Current filters apply only here. The cards above stay fixed to the
+            complete database, while the plot and summary below change with the
+            filter stack.
           </p>
-        </div>
-
-        <div class="hero-note plot-note" id="plotStatusNote">
-          Loading current family...
         </div>
 
         <div class="stats-strip">

@@ -62,22 +62,11 @@ h1 {
   color: var(--muted);
 }
 
-.hero-note,
 .panel,
 .stat-box {
   border: 1px solid var(--line);
   background: rgba(255, 250, 241, 0.9);
   backdrop-filter: blur(4px);
-}
-
-.hero-note {
-  padding: 16px;
-  border-radius: 18px;
-  font-size: 14px;
-}
-
-.plot-note {
-  margin-bottom: 14px;
 }
 
 .panel {

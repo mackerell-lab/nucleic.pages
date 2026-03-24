@@ -409,6 +409,14 @@ function renderFamilyOverview() {
       { responsive: true, displaylogo: false, displayModeBar: false }
     );
   }
+
+  requestAnimationFrame(() => {
+    document.querySelectorAll(".mini-plot").forEach((plotRoot) => {
+      if (plotRoot?.children?.length) {
+        Plotly.Plots.resize(plotRoot);
+      }
+    });
+  });
 }
 
 function renderAll() {

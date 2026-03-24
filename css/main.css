@@ -267,6 +267,8 @@ select {
   width: 100%;
   text-align: left;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: #fffdf7;
@@ -305,6 +307,15 @@ select {
 
 .mini-plot {
   height: 220px;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.mini-plot .js-plotly-plot,
+.mini-plot .plot-container,
+.mini-plot .svg-container {
+  width: 100% !important;
+  max-width: 100%;
 }
 
 @media (max-width: 1120px) {

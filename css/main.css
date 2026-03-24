@@ -31,7 +31,7 @@ body {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 500px);
+  grid-template-columns: minmax(0, 1fr) minmax(460px, 620px);
   gap: 18px;
   align-items: start;
   margin-bottom: 22px;
@@ -65,7 +65,8 @@ h1 {
 .hero-note {
   justify-self: end;
   align-self: start;
-  max-width: 500px;
+  width: 100%;
+  max-width: 620px;
   margin-bottom: 0;
   padding: 14px 16px;
   border-radius: 18px;

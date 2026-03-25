@@ -1,7 +1,7 @@
 {
   "version": "pure_dna",
   "display_name": "Pure DNA Explorer",
-  "generated_at": "2026-03-25T00:36:22.336Z",
+  "generated_at": "2026-03-25T00:42:13.188Z",
   "universe": {
     "pdb_entries": 1830,
     "forms": {
@@ -221,7 +221,22 @@
           "label": "T"
         }
       ],
-      "secondary_context_options": []
+      "secondary_context_column": "bi_bii",
+      "secondary_context_label": "Backbone State",
+      "secondary_context_options": [
+        {
+          "id": "BI",
+          "label": "BI"
+        },
+        {
+          "id": "BII",
+          "label": "BII"
+        },
+        {
+          "id": "BIII",
+          "label": "BIII"
+        }
+      ]
     },
     "sugar_torsion": {
       "family_id": "sugar_torsion",
@@ -255,7 +270,22 @@
           "label": "T"
         }
       ],
-      "secondary_context_options": []
+      "secondary_context_column": "bi_bii",
+      "secondary_context_label": "Backbone State",
+      "secondary_context_options": [
+        {
+          "id": "BI",
+          "label": "BI"
+        },
+        {
+          "id": "BII",
+          "label": "BII"
+        },
+        {
+          "id": "BIII",
+          "label": "BIII"
+        }
+      ]
     },
     "pucker": {
       "family_id": "pucker",
@@ -288,7 +318,22 @@
           "label": "T"
         }
       ],
-      "secondary_context_options": []
+      "secondary_context_column": "bi_bii",
+      "secondary_context_label": "Backbone State",
+      "secondary_context_options": [
+        {
+          "id": "BI",
+          "label": "BI"
+        },
+        {
+          "id": "BII",
+          "label": "BII"
+        },
+        {
+          "id": "BIII",
+          "label": "BIII"
+        }
+      ]
     },
     "base_pair": {
       "family_id": "base_pair",

@@ -1,7 +1,7 @@
 {
   "version": "pure_dna",
   "display_name": "Pure DNA Explorer",
-  "generated_at": "2026-03-25T14:52:03.058Z",
+  "generated_at": "2026-03-25T15:29:16.530Z",
   "universe": {
     "pdb_entries": 1830,
     "forms": {
@@ -224,6 +224,10 @@
         {
           "id": "BIII",
           "label": "BIII"
+        },
+        {
+          "id": "Missing",
+          "label": "Missing"
         }
       ]
     },
@@ -274,6 +278,10 @@
         {
           "id": "BIII",
           "label": "BIII"
+        },
+        {
+          "id": "Missing",
+          "label": "Missing"
         }
       ]
     },
@@ -323,6 +331,10 @@
         {
           "id": "BIII",
           "label": "BIII"
+        },
+        {
+          "id": "Missing",
+          "label": "Missing"
         }
       ]
     },
@@ -371,6 +383,10 @@
         {
           "id": "BIII",
           "label": "BIII"
+        },
+        {
+          "id": "Missing",
+          "label": "Missing"
         }
       ]
     },
@@ -1100,8 +1116,8 @@
       "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [
-        -180,
-        220
+        -360,
+        360
       ]
     },
     {

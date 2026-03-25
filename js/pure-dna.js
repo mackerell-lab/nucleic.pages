@@ -32,7 +32,7 @@ const state = {
   resolution: "any",
   forms: new Set(Object.keys(FORM_META)),
   contexts: new Set(),
-  backboneStates: new Set(["BI", "BII", "BIII"]),
+  backboneStates: new Set(["BI", "BII", "BIII", "Missing"]),
   terminalPolicy: "include",
   circularMode: "auto",
   universeTableOpen: false,

@@ -1,7 +1,7 @@
 {
   "version": "pure_dna",
   "display_name": "Pure DNA Explorer",
-  "generated_at": "2026-03-24T17:55:39.835Z",
+  "generated_at": "2026-03-24T23:58:38.048Z",
   "universe": {
     "pdb_entries": 1830,
     "forms": {
@@ -148,7 +148,42 @@
         "delta",
         "epsilon",
         "zeta",
-        "chi"
+        "chi",
+        "e_z"
+      ],
+      "context_column": "base",
+      "context_label": "Base Type",
+      "context_options": [
+        {
+          "id": "A",
+          "label": "A"
+        },
+        {
+          "id": "C",
+          "label": "C"
+        },
+        {
+          "id": "G",
+          "label": "G"
+        },
+        {
+          "id": "T",
+          "label": "T"
+        }
+      ]
+    },
+    "pseudo_torsion": {
+      "family_id": "pseudo_torsion",
+      "display_name": "Pseudo Torsion",
+      "file": "./pseudo_torsion.tsv.gz",
+      "row_count": 53853,
+      "param_ids": [
+        "eta",
+        "theta",
+        "eta1",
+        "theta1",
+        "eta2",
+        "theta2"
       ],
       "context_column": "base",
       "context_label": "Base Type",
@@ -240,7 +275,7 @@
       "family_id": "base_pair",
       "display_name": "Base Pair",
       "file": "./base_pairs.tsv.gz",
-      "row_count": 17933,
+      "row_count": 18865,
       "param_ids": [
         "shear",
         "stretch",
@@ -253,28 +288,149 @@
       "context_label": "Pair Type",
       "context_options": [
         {
+          "id": "A-A",
+          "label": "A-A"
+        },
+        {
+          "id": "A-C",
+          "label": "A-C"
+        },
+        {
+          "id": "A-G",
+          "label": "A-G"
+        },
+        {
           "id": "A-T",
           "label": "A-T"
         },
         {
-          "id": "T-A",
-          "label": "T-A"
+          "id": "C-A",
+          "label": "C-A"
         },
         {
-          "id": "G-C",
-          "label": "G-C"
+          "id": "C-C",
+          "label": "C-C"
         },
         {
           "id": "C-G",
           "label": "C-G"
         },
         {
+          "id": "C-T",
+          "label": "C-T"
+        },
+        {
+          "id": "G-A",
+          "label": "G-A"
+        },
+        {
+          "id": "G-C",
+          "label": "G-C"
+        },
+        {
+          "id": "G-G",
+          "label": "G-G"
+        },
+        {
           "id": "G-T",
           "label": "G-T"
         },
         {
+          "id": "T-A",
+          "label": "T-A"
+        },
+        {
+          "id": "T-C",
+          "label": "T-C"
+        },
+        {
           "id": "T-G",
           "label": "T-G"
+        },
+        {
+          "id": "T-T",
+          "label": "T-T"
+        }
+      ]
+    },
+    "pair_quality": {
+      "family_id": "pair_quality",
+      "display_name": "Pair Quality",
+      "file": "./lambda.tsv.gz",
+      "row_count": 18865,
+      "param_ids": [
+        "lambda_1",
+        "lambda_2",
+        "c1c1",
+        "rn9_yn1",
+        "rc8_yc6"
+      ],
+      "context_column": "pair_type",
+      "context_label": "Pair Type",
+      "context_options": [
+        {
+          "id": "A-A",
+          "label": "A-A"
+        },
+        {
+          "id": "A-C",
+          "label": "A-C"
+        },
+        {
+          "id": "A-G",
+          "label": "A-G"
+        },
+        {
+          "id": "A-T",
+          "label": "A-T"
+        },
+        {
+          "id": "C-A",
+          "label": "C-A"
+        },
+        {
+          "id": "C-C",
+          "label": "C-C"
+        },
+        {
+          "id": "C-G",
+          "label": "C-G"
+        },
+        {
+          "id": "C-T",
+          "label": "C-T"
+        },
+        {
+          "id": "G-A",
+          "label": "G-A"
+        },
+        {
+          "id": "G-C",
+          "label": "G-C"
+        },
+        {
+          "id": "G-G",
+          "label": "G-G"
+        },
+        {
+          "id": "G-T",
+          "label": "G-T"
+        },
+        {
+          "id": "T-A",
+          "label": "T-A"
+        },
+        {
+          "id": "T-C",
+          "label": "T-C"
+        },
+        {
+          "id": "T-G",
+          "label": "T-G"
+        },
+        {
+          "id": "T-T",
+          "label": "T-T"
         }
       ]
     },
@@ -282,7 +438,7 @@
       "family_id": "step",
       "display_name": "Step",
       "file": "./steps.tsv.gz",
-      "row_count": 14659,
+      "row_count": 14490,
       "param_ids": [
         "shift",
         "slide",
@@ -340,7 +496,7 @@
       "family_id": "helical",
       "display_name": "Helical",
       "file": "./helical.tsv.gz",
-      "row_count": 14659,
+      "row_count": 14490,
       "param_ids": [
         "x_disp",
         "y_disp",
@@ -348,6 +504,155 @@
         "inclination",
         "tip",
         "h_twist"
+      ],
+      "context_column": "step_type",
+      "context_label": "Step Type",
+      "context_options": [
+        {
+          "id": "AA/TT",
+          "label": "AA/TT"
+        },
+        {
+          "id": "AC/GT",
+          "label": "AC/GT"
+        },
+        {
+          "id": "AG/CT",
+          "label": "AG/CT"
+        },
+        {
+          "id": "AT/AT",
+          "label": "AT/AT"
+        },
+        {
+          "id": "CA/TG",
+          "label": "CA/TG"
+        },
+        {
+          "id": "CC/GG",
+          "label": "CC/GG"
+        },
+        {
+          "id": "CG/CG",
+          "label": "CG/CG"
+        },
+        {
+          "id": "GA/TC",
+          "label": "GA/TC"
+        },
+        {
+          "id": "GC/GC",
+          "label": "GC/GC"
+        },
+        {
+          "id": "TA/TA",
+          "label": "TA/TA"
+        }
+      ]
+    },
+    "step_position": {
+      "family_id": "step_position",
+      "display_name": "Step Position",
+      "file": "./step_position.tsv.gz",
+      "row_count": 14490,
+      "param_ids": [
+        "xp",
+        "yp",
+        "zp",
+        "xph",
+        "yph",
+        "zph",
+        "abi"
+      ],
+      "context_column": "form_class",
+      "context_label": "Form Class",
+      "context_options": [
+        {
+          "id": "A",
+          "label": "A"
+        },
+        {
+          "id": "B",
+          "label": "B"
+        },
+        {
+          "id": "*TA*",
+          "label": "*TA*"
+        },
+        {
+          "id": "Unclassified",
+          "label": "Unclassified"
+        }
+      ]
+    },
+    "same_strand": {
+      "family_id": "same_strand",
+      "display_name": "Same Strand",
+      "file": "./same_strand.tsv.gz",
+      "row_count": 14490,
+      "param_ids": [
+        "strand_i_p_p",
+        "strand_i_c1_c1",
+        "strand_ii_p_p",
+        "strand_ii_c1_c1"
+      ],
+      "context_column": "step_type",
+      "context_label": "Step Type",
+      "context_options": [
+        {
+          "id": "AA/TT",
+          "label": "AA/TT"
+        },
+        {
+          "id": "AC/GT",
+          "label": "AC/GT"
+        },
+        {
+          "id": "AG/CT",
+          "label": "AG/CT"
+        },
+        {
+          "id": "AT/AT",
+          "label": "AT/AT"
+        },
+        {
+          "id": "CA/TG",
+          "label": "CA/TG"
+        },
+        {
+          "id": "CC/GG",
+          "label": "CC/GG"
+        },
+        {
+          "id": "CG/CG",
+          "label": "CG/CG"
+        },
+        {
+          "id": "GA/TC",
+          "label": "GA/TC"
+        },
+        {
+          "id": "GC/GC",
+          "label": "GC/GC"
+        },
+        {
+          "id": "TA/TA",
+          "label": "TA/TA"
+        }
+      ]
+    },
+    "helix_radius": {
+      "family_id": "helix_radius",
+      "display_name": "Helix Radius",
+      "file": "./helix_radius.tsv.gz",
+      "row_count": 14490,
+      "param_ids": [
+        "strand_i_p_radius",
+        "strand_i_o4_radius",
+        "strand_i_c1_radius",
+        "strand_ii_p_radius",
+        "strand_ii_o4_radius",
+        "strand_ii_c1_radius"
       ],
       "context_column": "step_type",
       "context_label": "Step Type",
@@ -679,6 +984,89 @@
       ]
     },
     {
+      "param_id": "e_z",
+      "family_id": "backbone",
+      "display_name": "e-z",
+      "unit": "deg",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        -180,
+        220
+      ]
+    },
+    {
+      "param_id": "eta",
+      "family_id": "pseudo_torsion",
+      "display_name": "eta",
+      "unit": "deg",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "theta",
+      "family_id": "pseudo_torsion",
+      "display_name": "theta",
+      "unit": "deg",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "eta1",
+      "family_id": "pseudo_torsion",
+      "display_name": "eta'",
+      "unit": "deg",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "theta1",
+      "family_id": "pseudo_torsion",
+      "display_name": "theta'",
+      "unit": "deg",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "eta2",
+      "family_id": "pseudo_torsion",
+      "display_name": "eta\"",
+      "unit": "deg",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
+      "param_id": "theta2",
+      "family_id": "pseudo_torsion",
+      "display_name": "theta\"",
+      "unit": "deg",
+      "value_type": "numeric_circular",
+      "period": 360,
+      "display_range_default": [
+        0,
+        360
+      ]
+    },
+    {
       "param_id": "v0",
       "family_id": "sugar_torsion",
       "display_name": "v0",
@@ -781,6 +1169,248 @@
       "display_range_default": [
         0,
         6
+      ]
+    },
+    {
+      "param_id": "lambda_1",
+      "family_id": "pair_quality",
+      "display_name": "lambda(I)",
+      "unit": "deg",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        0,
+        90
+      ]
+    },
+    {
+      "param_id": "lambda_2",
+      "family_id": "pair_quality",
+      "display_name": "lambda(II)",
+      "unit": "deg",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        0,
+        90
+      ]
+    },
+    {
+      "param_id": "c1c1",
+      "family_id": "pair_quality",
+      "display_name": "C1'-C1'",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        6,
+        14
+      ]
+    },
+    {
+      "param_id": "rn9_yn1",
+      "family_id": "pair_quality",
+      "display_name": "RN9-YN1",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        6,
+        12
+      ]
+    },
+    {
+      "param_id": "rc8_yc6",
+      "family_id": "pair_quality",
+      "display_name": "RC8-YC6",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        6,
+        12
+      ]
+    },
+    {
+      "param_id": "xp",
+      "family_id": "step_position",
+      "display_name": "Xp",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        -5,
+        2
+      ]
+    },
+    {
+      "param_id": "yp",
+      "family_id": "step_position",
+      "display_name": "Yp",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        5,
+        11
+      ]
+    },
+    {
+      "param_id": "zp",
+      "family_id": "step_position",
+      "display_name": "Zp",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        -3,
+        4
+      ]
+    },
+    {
+      "param_id": "xph",
+      "family_id": "step_position",
+      "display_name": "XpH",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        -12,
+        4
+      ]
+    },
+    {
+      "param_id": "yph",
+      "family_id": "step_position",
+      "display_name": "YpH",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        0,
+        11
+      ]
+    },
+    {
+      "param_id": "zph",
+      "family_id": "step_position",
+      "display_name": "ZpH",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        -4,
+        10
+      ]
+    },
+    {
+      "param_id": "abi",
+      "family_id": "step_position",
+      "display_name": "ABI",
+      "unit": "",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        -0.5,
+        1.5
+      ]
+    },
+    {
+      "param_id": "strand_i_p_p",
+      "family_id": "same_strand",
+      "display_name": "Strand I P--P",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        4,
+        10
+      ]
+    },
+    {
+      "param_id": "strand_i_c1_c1",
+      "family_id": "same_strand",
+      "display_name": "Strand I C1'--C1'",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        3,
+        8
+      ]
+    },
+    {
+      "param_id": "strand_ii_p_p",
+      "family_id": "same_strand",
+      "display_name": "Strand II P--P",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        4,
+        10
+      ]
+    },
+    {
+      "param_id": "strand_ii_c1_c1",
+      "family_id": "same_strand",
+      "display_name": "Strand II C1'--C1'",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        3,
+        8
+      ]
+    },
+    {
+      "param_id": "strand_i_p_radius",
+      "family_id": "helix_radius",
+      "display_name": "Strand I P radius",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        0,
+        15
+      ]
+    },
+    {
+      "param_id": "strand_i_o4_radius",
+      "family_id": "helix_radius",
+      "display_name": "Strand I O4' radius",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        0,
+        12
+      ]
+    },
+    {
+      "param_id": "strand_i_c1_radius",
+      "family_id": "helix_radius",
+      "display_name": "Strand I C1' radius",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        0,
+        12
+      ]
+    },
+    {
+      "param_id": "strand_ii_p_radius",
+      "family_id": "helix_radius",
+      "display_name": "Strand II P radius",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        0,
+        15
+      ]
+    },
+    {
+      "param_id": "strand_ii_o4_radius",
+      "family_id": "helix_radius",
+      "display_name": "Strand II O4' radius",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        0,
+        12
+      ]
+    },
+    {
+      "param_id": "strand_ii_c1_radius",
+      "family_id": "helix_radius",
+      "display_name": "Strand II C1' radius",
+      "unit": "Å",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        0,
+        12
       ]
     }
   ]

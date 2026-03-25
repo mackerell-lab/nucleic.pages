@@ -715,6 +715,9 @@ function accumulateVisibleSeries(familyData, allowedPidMask, paramId, paramMeta,
 function renderOverviewCards() {
   const root = el("overviewCards");
   const { universe } = state.manifest;
+  const familyEntries = Object.values(state.manifest.families ?? {});
+  const familyChunks = [];
+  for (let i = 0; i < familyEntries.length; i += 3) familyChunks.push(familyEntries.slice(i, i + 3));
   root.innerHTML = "";
   const cards = [
     {
@@ -744,10 +747,9 @@ function renderOverviewCards() {
     {
       kind: "Files",
       title: "Precomputed family rows",
-      lines: [
-        `Backbone ${formatInt(state.manifest.families.backbone.row_count)} / Sugar ${formatInt(state.manifest.families.sugar_torsion.row_count)} / Pucker ${formatInt(state.manifest.families.pucker.row_count)}`,
-        `Base pair ${formatInt(state.manifest.families.base_pair.row_count)} / Step ${formatInt(state.manifest.families.step.row_count)} / Helical ${formatInt(state.manifest.families.helical.row_count)}`,
-      ],
+      lines: familyChunks.map((chunk) => chunk.map(
+        (family) => `${family.display_name} ${formatInt(family.row_count)}`,
+      ).join(" / ")),
     },
   ];
 

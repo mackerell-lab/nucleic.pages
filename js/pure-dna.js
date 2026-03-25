@@ -822,8 +822,8 @@ function resolutionLabel(row) {
   return `${formatFloat(row.resolution, 2)} Å`;
 }
 
-function rcsbStructureUrl(pdbId) {
-  return `https://www.rcsb.org/structure/${encodeURIComponent(String(pdbId ?? "").toUpperCase())}`;
+function nakbAtlasUrl(pdbId) {
+  return `https://nakb.org/atlas=${encodeURIComponent(String(pdbId ?? "").toUpperCase())}`;
 }
 
 function renderUniverseTablePage() {
@@ -845,10 +845,10 @@ function renderUniverseTablePage() {
       <td>
         <a
           class="pdb-link"
-          href="${rcsbStructureUrl(row.pdbId)}"
+          href="${nakbAtlasUrl(row.pdbId)}"
           target="_blank"
           rel="noreferrer noopener"
-          title="Open ${escapeHtml(String(row.pdbId).toUpperCase())} on RCSB"
+          title="Open ${escapeHtml(String(row.pdbId).toUpperCase())} on NAKB"
         >${escapeHtml(String(row.pdbId).toUpperCase())}</a>
       </td>
       <td><span class="pill ${escapeHtml(row.form)}">${escapeHtml(FORM_META[row.form]?.label ?? row.form)}</span></td>

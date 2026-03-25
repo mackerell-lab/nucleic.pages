@@ -23,14 +23,15 @@
             Complete-database PDB counts and precomputed family row totals for
             the 1,830-entry local pure-DNA set used by this site, selected from
             237,057 scanned PDB entries by SEQRES-based canonical DNA-only filtering,
-            excluding RNA, hybrid, protein, and noncanonical cases.
+            excluding RNA, hybrid, protein, and noncanonical cases. Top-level
+            form classes shown below follow NAKB annotations.
           </p>
         </div>
         <div id="overviewCards" class="card-grid"></div>
         <div class="panel-subhead collapse-toggle-row">
           <div>
             <h3>Database PDB Table</h3>
-            <p>Open to inspect the exact PDB entries used in this database.</p>
+            <p>Open to inspect the exact PDB entries used in this database, with NAKB-based form classification.</p>
           </div>
           <button type="button" id="universeToggle" class="toggle-btn collapse-toggle" aria-expanded="false">
             Show PDB entries
@@ -39,7 +40,7 @@
         <div id="universeDrawer" class="drawer-panel" hidden>
           <div class="drawer-toolbar">
             <p>
-              Each row is one PDB entry from the complete pure-DNA database used by this site.
+              Each row is one PDB entry from the complete pure-DNA database used by this site. PDB links open the NAKB Atlas entry, and the Form column uses NAKB classification.
             </p>
             <div class="drawer-pager">
               <button type="button" id="universePrev" class="toggle-btn">Prev</button>
@@ -52,7 +53,7 @@
               <thead>
                 <tr>
                   <th>PDB</th>
-                  <th>Form</th>
+                  <th>Form (NAKB)</th>
                   <th>Method</th>
                   <th>Resolution</th>
                   <th>Cleanliness</th>
@@ -97,7 +98,7 @@
           </div>
 
           <div class="filter-cluster">
-            <span class="cluster-title">Form</span>
+            <span class="cluster-title">Form (NAKB)</span>
             <div id="formGroup" class="toggle-group"></div>
           </div>
 
@@ -158,7 +159,7 @@
             <span class="stat-value" id="loadedFamilyRows">-</span>
           </div>
           <div class="stat-box">
-            <span class="stat-label">Form scope</span>
+            <span class="stat-label">Form scope (NAKB)</span>
             <span class="stat-value" id="currentFormScope">-</span>
           </div>
           <div class="stat-box">

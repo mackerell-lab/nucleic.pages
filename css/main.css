@@ -350,9 +350,34 @@ select {
   background: rgba(20, 108, 67, 0.08);
 }
 
-.pill.other {
+.pill.quadruplex {
+  color: #6f2dbd;
+  background: rgba(111, 45, 189, 0.08);
+}
+
+.pill.triplex {
+  color: #c46b00;
+  background: rgba(196, 107, 0, 0.08);
+}
+
+.pill.double_other {
+  color: #3f6f8a;
+  background: rgba(63, 111, 138, 0.08);
+}
+
+.pill.annotated_other {
   color: #6c4f35;
   background: rgba(108, 79, 53, 0.08);
+}
+
+.pill.parallel_other {
+  color: #b24c63;
+  background: rgba(178, 76, 99, 0.08);
+}
+
+.pill.unannotated {
+  color: #7a756c;
+  background: rgba(122, 117, 108, 0.08);
 }
 
 .stats-strip {

@@ -4,7 +4,12 @@ const FORM_META = {
   adna: { label: "A-DNA", color: "#8c3b2a" },
   bdna: { label: "B-DNA", color: "#174a7e" },
   zdna: { label: "Z-DNA", color: "#146c43" },
-  other: { label: "Other", color: "#6c4f35" },
+  quadruplex: { label: "Quadruplex", color: "#6f2dbd" },
+  triplex: { label: "Triplex", color: "#c46b00" },
+  double_other: { label: "Double-other", color: "#3f6f8a" },
+  annotated_other: { label: "Annotated-other", color: "#6c4f35" },
+  parallel_other: { label: "Parallel-other", color: "#b24c63" },
+  unannotated: { label: "Unannotated", color: "#7a756c" },
 };
 
 const CIRCULAR_MODE_OPTIONS = [
@@ -373,6 +378,8 @@ function parsePdbManifest(text) {
       pid,
       pdbId: cols[indexOf.pdb_id],
       form: cols[indexOf.form] || "other",
+      localForm: cols[indexOf.local_form] || "other",
+      compareLocalVsNakb: cols[indexOf.compare_local_vs_nakb] || "",
       method: cols[indexOf.exp_method_group] || "other",
       resolution: parseNumber(cols[indexOf.resolution]),
       resolutionKnown: parseIntSafe(cols[indexOf.resolution_known]) === 1,
@@ -749,6 +756,13 @@ function renderOverviewCards() {
   const familyEntries = Object.values(state.manifest.families ?? {});
   const familyChunks = [];
   for (let i = 0; i < familyEntries.length; i += 3) familyChunks.push(familyEntries.slice(i, i + 3));
+  const formCounts = (state.manifest.controls.form_options || []).map((option) => (
+    `${option.label} ${formatInt(universe.forms[option.id] ?? 0)}`
+  ));
+  const formLines = [];
+  for (let i = 0; i < formCounts.length; i += 3) {
+    formLines.push(formCounts.slice(i, i + 3).join(" / "));
+  }
   root.innerHTML = "";
   const cards = [
     {
@@ -756,7 +770,7 @@ function renderOverviewCards() {
       title: "Master pool",
       lines: [
         `${formatInt(universe.pdb_entries)} pure DNA entries`,
-        `A ${formatInt(universe.forms.adna)} / B ${formatInt(universe.forms.bdna)} / Z ${formatInt(universe.forms.zdna)} / Other ${formatInt(universe.forms.other)}`,
+        ...formLines,
       ],
     },
     {

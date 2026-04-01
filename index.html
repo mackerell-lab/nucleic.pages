@@ -186,7 +186,7 @@
                   <span>Histogram Detail</span>
                   <span class="help-wrap">
                     <button type="button" class="help-badge" aria-label="Explain histogram detail">?</button>
-                    <span class="help-tooltip">Controls the number of histogram bins used to draw the current curves. Standard uses 64 bins for linear parameters and 72 for circular parameters; Fine doubles this to 128 and 144. Fine mode resolves narrower peaks but can look noisier.</span>
+                    <span class="help-tooltip">Controls the raw histogram resolution before smoothing. Standard uses 64 bins for linear parameters and 72 for circular parameters; Fine doubles this to 128 and 144. The selected bins are Gaussian-smoothed using the current Smoothing σ. Under Probability, the smoothed bins are normalized to sum to 1; under Density, they are additionally divided by bin width, including angular bin width for circular variables.</span>
                   </span>
                 </span>
                 <div id="binDetailGroup" class="toggle-group"></div>

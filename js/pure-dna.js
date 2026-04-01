@@ -27,11 +27,11 @@ const SMOOTHING_SIGMA_OPTIONS = [
 ];
 
 const MD_BDNA_46 = new Set([
-  "109D","126D","127D","158D","196D","1BNA","1D23","1D43","1D44","1D45",
-  "1D46","1D56","1D63","1DCV","1DOU","1FQ2","1JGR","1M6F","1S2R","2B0K",
-  "2B3E","2GVR","2GYX","2I2I","2I5A","2L8Q","307D","334D","355D","360D",
-  "3C2J","423D","428D","443D","455D","4AGZ","4AH0","4AH1","5ET9","5EWB",
-  "6CQ3","7BNA","7KCI","8C63","8CE2","9BNA",
+  "109d","126d","127d","158d","196d","1bna","1d23","1d43","1d44","1d45",
+  "1d46","1d56","1d63","1dcv","1dou","1fq2","1jgr","1m6f","1s2r","2b0k",
+  "2b3e","2gvr","2gyx","2i2i","2i5a","2l8q","307d","334d","355d","360d",
+  "3c2j","423d","428d","443d","455d","4agz","4ah0","4ah1","5et9","5ewb",
+  "6cq3","7bna","7kci","8c63","8ce2","9bna",
 ]);
 
 const UNIVERSE_TABLE_PAGE_SIZE = 100;

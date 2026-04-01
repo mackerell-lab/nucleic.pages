@@ -133,6 +133,11 @@ function currentDisplayScaleLabel() {
   return state.displayScale === "density" ? "Density (smoothed)" : "Probability (smoothed)";
 }
 
+function currentPresetLabel() {
+  if (state.pdbPreset === "md47") return "MD B-DNA (46)";
+  return "Off";
+}
+
 function currentBinCount(paramMeta) {
   const standard = paramMeta.isCircular ? 72 : 64;
   if (state.binDetail !== "fine") return standard;
@@ -1471,7 +1476,13 @@ function updateStats(allowed, familyData, accumulation) {
   el("filteredPdbCount").textContent = formatInt(allowed.total);
   el("filteredObservationCount").textContent = formatInt(accumulation.totalVisibleObservations);
   el("loadedFamilyRows").textContent = formatInt(familyData.rowCount);
-  el("currentFormScope").textContent = selectedFormsLabel();
+  if (state.pdbPreset) {
+    el("currentFormScopeLabel").textContent = "Preset scope";
+    el("currentFormScope").textContent = currentPresetLabel();
+  } else {
+    el("currentFormScopeLabel").textContent = "Form scope (NAKB)";
+    el("currentFormScope").textContent = selectedFormsLabel();
+  }
   el("currentMethodScope").textContent = selectedMethodsLabel();
   el("currentContextScope").textContent = selectedContextsLabel();
   state.filteredRows = allowed.rows;

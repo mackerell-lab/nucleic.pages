@@ -56,9 +56,16 @@ h1 {
 }
 
 .panel {
+  position: relative;
+  z-index: 0;
   padding: 18px;
   border-radius: 22px;
   margin-bottom: 22px;
+}
+
+.panel:hover,
+.panel:focus-within {
+  z-index: 20;
 }
 
 .panel-head {

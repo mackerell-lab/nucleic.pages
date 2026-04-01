@@ -26,6 +26,21 @@ const SMOOTHING_SIGMA_OPTIONS = [
   { id: "2.0", label: "2.0", sigma: 2.0 },
 ];
 
+const DISPLAY_SCALE_OPTIONS = [
+  { id: "probability", label: "Probability" },
+  { id: "density", label: "Density" },
+];
+
+const TRACE_STYLE_OPTIONS = [
+  { id: "filled", label: "Filled" },
+  { id: "line_only", label: "Line-only" },
+];
+
+const BIN_DETAIL_OPTIONS = [
+  { id: "standard", label: "Standard" },
+  { id: "fine", label: "Fine" },
+];
+
 const MD_BDNA_46 = new Set([
   "109d","126d","127d","158d","196d","1bna","1d23","1d43","1d44","1d45",
   "1d46","1d56","1d63","1dcv","1dou","1fq2","1jgr","1m6f","1s2r","2b0k",
@@ -52,6 +67,9 @@ const state = {
   terminalPolicy: "include",
   circularMode: "auto",
   smoothingSigma: "1.6",
+  displayScale: "probability",
+  traceStyle: "filled",
+  binDetail: "standard",
   universeTableOpen: false,
   universeTablePage: 0,
   universeSortedRows: null,
@@ -111,6 +129,16 @@ function formatNumberWithUnit(value, digits, unit = "") {
   return unit ? `${Number(value).toFixed(digits)} ${unit}` : Number(value).toFixed(digits);
 }
 
+function currentDisplayScaleLabel() {
+  return state.displayScale === "density" ? "Density (smoothed)" : "Probability (smoothed)";
+}
+
+function currentBinCount(paramMeta) {
+  const standard = paramMeta.isCircular ? 72 : 64;
+  if (state.binDetail !== "fine") return standard;
+  return paramMeta.isCircular ? 144 : 128;
+}
+
 function escapeHtml(text) {
   return String(text ?? "")
     .replaceAll("&", "&amp;")
@@ -118,6 +146,25 @@ function escapeHtml(text) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function helpBadgeHtml(label, tooltip) {
+  return `
+    <span class="help-wrap">
+      <button type="button" class="help-badge" aria-label="Explain ${escapeHtml(label)}">?</button>
+      <span class="help-tooltip">${escapeHtml(tooltip)}</span>
+    </span>
+  `;
+}
+
+function labelWithHelpHtml(label, tooltip) {
+  if (!tooltip) return escapeHtml(label);
+  return `
+    <span class="label-with-help">
+      <span>${escapeHtml(label)}</span>
+      ${helpBadgeHtml(label, tooltip)}
+    </span>
+  `;
 }
 
 function wrapCircular(value, period = 360) {
@@ -696,6 +743,12 @@ function finalizeAccumulator(acc, paramMeta, range, displayCut = 0, shiftBins = 
     : smoothLinearCounts(rawCounts, smoothingSigma);
   const totalSmooth = smoothCounts.reduce((sum, value) => sum + value, 0);
   const probability = totalSmooth ? smoothCounts.map((value) => value / totalSmooth) : smoothCounts;
+  const binWidth = paramMeta.isCircular
+    ? (paramMeta.period ?? 360) / acc.bins
+    : ((range[1] - range[0]) / acc.bins);
+  const yValues = state.displayScale === "density" && binWidth > 0
+    ? probability.map((value) => value / binWidth)
+    : probability;
   const x = probability.map((_, index) => {
     if (paramMeta.isCircular) {
       const width = (paramMeta.period ?? 360) / acc.bins;
@@ -750,11 +803,19 @@ function finalizeAccumulator(acc, paramMeta, range, displayCut = 0, shiftBins = 
     };
   }
 
-  return { x, y: probability, hoverAngles, hoverDisplayAngles, displayCut, axisMode, summary };
+  return {
+    x,
+    y: yValues,
+    hoverAngles,
+    hoverDisplayAngles,
+    displayCut,
+    axisMode,
+    summary,
+  };
 }
 
 function accumulateVisibleSeries(familyData, allowedPidMask, paramId, paramMeta, range, allowedRowsByForm = null) {
-  const bins = paramMeta.isCircular ? 72 : 64;
+  const bins = currentBinCount(paramMeta);
   const seriesIds = selectedFormIds();
   const seriesAcc = Object.fromEntries(seriesIds.map((formId) => [formId, initAccumulator(paramMeta, bins)]));
   let totalVisibleObservations = 0;
@@ -1152,12 +1213,27 @@ function bindControls() {
 
   renderSingleChoiceGroup("circularModeGroup", CIRCULAR_MODE_OPTIONS, state.circularMode, (nextId) => {
     state.circularMode = nextId;
-    triggerFiltersAndPlot();
+    triggerPlot();
   });
 
   renderSingleChoiceGroup("smoothingSigmaGroup", SMOOTHING_SIGMA_OPTIONS, state.smoothingSigma, (nextId) => {
     state.smoothingSigma = nextId;
-    triggerFiltersAndPlot();
+    triggerPlot();
+  });
+
+  renderSingleChoiceGroup("displayScaleGroup", DISPLAY_SCALE_OPTIONS, state.displayScale, (nextId) => {
+    state.displayScale = nextId;
+    triggerPlot();
+  });
+
+  renderSingleChoiceGroup("traceStyleGroup", TRACE_STYLE_OPTIONS, state.traceStyle, (nextId) => {
+    state.traceStyle = nextId;
+    triggerPlot();
+  });
+
+  renderSingleChoiceGroup("binDetailGroup", BIN_DETAIL_OPTIONS, state.binDetail, (nextId) => {
+    state.binDetail = nextId;
+    triggerPlot();
   });
 
   el("familySelect").onchange = (event) => {
@@ -1237,24 +1313,27 @@ function computeEffectiveRange(paramMeta, familyData = null, paramId = null, all
 
 function buildTrace(formId, seriesData, paramMeta) {
   const formMeta = FORM_META[formId];
+  const yLabel = state.displayScale === "density" ? "Density" : "Probability";
   const trace = {
     x: seriesData.x,
     y: seriesData.y,
     type: "scatter",
     mode: "lines",
-    fill: "tozeroy",
     line: { width: 2.5, color: formMeta.color },
-    fillcolor: `${formMeta.color}22`,
     name: formMeta.label,
-    hovertemplate: "%{x:.2f}<br>Probability %{y:.4f}<extra>" + formMeta.label + "</extra>",
+    hovertemplate: `%{x:.2f}<br>${yLabel} %{y:.4f}<extra>${formMeta.label}</extra>`,
   };
+  if (state.traceStyle === "filled") {
+    trace.fill = "tozeroy";
+    trace.fillcolor = `${formMeta.color}22`;
+  }
   if (paramMeta.isCircular) {
     if (seriesData.axisMode === "signed_180") {
       trace.customdata = seriesData.hoverAngles.map((angle, index) => [seriesData.hoverDisplayAngles[index], angle]);
-      trace.hovertemplate = "View %{customdata[0]:.1f}<br>Angle %{customdata[1]:.1f}<br>Probability %{y:.4f}<extra>" + formMeta.label + "</extra>";
+      trace.hovertemplate = `View %{customdata[0]:.1f}<br>Angle %{customdata[1]:.1f}<br>${yLabel} %{y:.4f}<extra>${formMeta.label}</extra>`;
     } else {
       trace.customdata = seriesData.hoverAngles;
-      trace.hovertemplate = "Angle %{customdata:.1f}<br>Probability %{y:.4f}<extra>" + formMeta.label + "</extra>";
+      trace.hovertemplate = `Angle %{customdata:.1f}<br>${yLabel} %{y:.4f}<extra>${formMeta.label}</extra>`;
     }
   }
   return trace;
@@ -1309,8 +1388,8 @@ function renderSummaryCards(series, paramMeta) {
           ["Rows", formatInt(seriesData.summary.n)],
           ["PDBs", formatInt(seriesData.summary.pdbCount)],
           ["Mean", formatNumberWithUnit(circularMean, 1, unit)],
-          ["Circ. std", formatNumberWithUnit(seriesData.summary.spread, 1, unit)],
-          ["Peak", formatNumberWithUnit(circularPeak, 1, unit)],
+          [labelWithHelpHtml("Circ. std", "Circular standard deviation for periodic angles; it accounts for wraparound near 0/360°."), formatNumberWithUnit(seriesData.summary.spread, 1, unit)],
+          [labelWithHelpHtml("Peak", "Location of the maximum of the currently displayed smoothed curve."), formatNumberWithUnit(circularPeak, 1, unit)],
         ]
       : [
           ["Rows", formatInt(seriesData.summary.n)],
@@ -1423,7 +1502,7 @@ function buildLayout(paramMeta, range, displayCut = 0, axisMode = "auto") {
     plot_bgcolor: "rgba(255,253,247,0.65)",
     xaxis,
     yaxis: {
-      title: "Probability (smoothed)",
+      title: currentDisplayScaleLabel(),
       automargin: true,
       ticklabeloverflow: "hide past div",
       zeroline: false,

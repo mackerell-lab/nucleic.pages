@@ -72,65 +72,127 @@
           <h2>Filter Stack</h2>
           <p>
             PDB-level filters are applied first. Sequence context and terminal
-            policy are applied only at the observation layer.
+            policy are applied only at the observation layer. Plot-display
+            controls change only how the selected data are drawn.
           </p>
         </div>
 
-        <div class="filter-layout">
-          <div class="filter-cluster">
-            <span class="cluster-title">PDB Preset</span>
-            <div id="presetGroup" class="toggle-group"></div>
-          </div>
+        <div class="filter-sections">
+          <section class="filter-section filter-section-data">
+            <div class="filter-section-head">
+              <h3>Data Selection</h3>
+              <p>These controls change which PDB entries and observations are included.</p>
+            </div>
+            <div class="filter-layout">
+              <div class="filter-cluster">
+                <span class="cluster-title">PDB Preset</span>
+                <div id="presetGroup" class="toggle-group"></div>
+              </div>
 
-          <div class="filter-cluster">
-            <span class="cluster-title">Cleanliness</span>
-            <div id="cleanlinessGroup" class="toggle-group"></div>
-          </div>
+              <div class="filter-cluster">
+                <span class="cluster-title">Cleanliness</span>
+                <div id="cleanlinessGroup" class="toggle-group"></div>
+              </div>
 
-          <div class="filter-cluster">
-            <span class="cluster-title">Duplex Gate</span>
-            <div id="duplexGroup" class="toggle-group"></div>
-          </div>
+              <div class="filter-cluster">
+                <span class="cluster-title">Duplex Gate</span>
+                <div id="duplexGroup" class="toggle-group"></div>
+              </div>
 
-          <div class="filter-cluster">
-            <span class="cluster-title">Method</span>
-            <div id="methodGroup" class="toggle-group multi"></div>
-          </div>
+              <div class="filter-cluster">
+                <span class="cluster-title">Method</span>
+                <div id="methodGroup" class="toggle-group multi"></div>
+              </div>
 
-          <div class="filter-cluster">
-            <span class="cluster-title">Resolution</span>
-            <div id="resolutionGroup" class="toggle-group"></div>
-          </div>
+              <div class="filter-cluster">
+                <span class="cluster-title">Resolution</span>
+                <div id="resolutionGroup" class="toggle-group"></div>
+              </div>
 
-          <div class="filter-cluster">
-            <span class="cluster-title">Form (NAKB)</span>
-            <div id="formGroup" class="toggle-group"></div>
-          </div>
+              <div class="filter-cluster">
+                <span class="cluster-title">Form (NAKB)</span>
+                <div id="formGroup" class="toggle-group"></div>
+              </div>
 
-          <div class="filter-cluster">
-            <span id="contextGroupTitle" class="cluster-title">Sequence Context</span>
-            <div id="contextGroup" class="toggle-group multi"></div>
-          </div>
+              <div class="filter-cluster">
+                <span id="contextGroupTitle" class="cluster-title">Sequence Context</span>
+                <div id="contextGroup" class="toggle-group multi"></div>
+              </div>
 
-          <div id="backboneStateCluster" class="filter-cluster" hidden>
-            <span id="backboneStateGroupTitle" class="cluster-title">Backbone State</span>
-            <div id="backboneStateGroup" class="toggle-group multi"></div>
-          </div>
+              <div id="backboneStateCluster" class="filter-cluster" hidden>
+                <span id="backboneStateGroupTitle" class="cluster-title">Backbone State</span>
+                <div id="backboneStateGroup" class="toggle-group multi"></div>
+              </div>
 
-          <div class="filter-cluster">
-            <span class="cluster-title">Terminal Policy</span>
-            <div id="terminalGroup" class="toggle-group"></div>
-          </div>
+              <div class="filter-cluster">
+                <span class="cluster-title">Terminal Policy</span>
+                <div id="terminalGroup" class="toggle-group"></div>
+              </div>
+            </div>
+          </section>
 
-          <div class="filter-cluster">
-            <span class="cluster-title">Circular Axis</span>
-            <div id="circularModeGroup" class="toggle-group"></div>
-          </div>
+          <section class="filter-section filter-section-display">
+            <div class="filter-section-head">
+              <h3>Plot Display</h3>
+              <p>These controls only change the visual presentation of the selected data.</p>
+            </div>
+            <div class="filter-layout filter-layout-display">
+              <div class="filter-cluster">
+                <span class="cluster-title label-with-help">
+                  <span>Circular Axis</span>
+                  <span class="help-wrap">
+                    <button type="button" class="help-badge" aria-label="Explain Circular Axis">?</button>
+                    <span class="help-tooltip">Controls how periodic angles are displayed without changing the underlying values.</span>
+                  </span>
+                </span>
+                <div id="circularModeGroup" class="toggle-group"></div>
+              </div>
 
-          <div class="filter-cluster">
-            <span class="cluster-title">Smoothing σ</span>
-            <div id="smoothingSigmaGroup" class="toggle-group"></div>
-          </div>
+              <div class="filter-cluster">
+                <span class="cluster-title label-with-help">
+                  <span>Smoothing σ</span>
+                  <span class="help-wrap">
+                    <button type="button" class="help-badge" aria-label="Explain Smoothing sigma">?</button>
+                    <span class="help-tooltip">Gaussian smoothing width in histogram-bin units. Larger values flatten peaks.</span>
+                  </span>
+                </span>
+                <div id="smoothingSigmaGroup" class="toggle-group"></div>
+              </div>
+
+              <div class="filter-cluster">
+                <span class="cluster-title label-with-help">
+                  <span>Probability / Density</span>
+                  <span class="help-wrap">
+                    <button type="button" class="help-badge" aria-label="Explain probability and density">?</button>
+                    <span class="help-tooltip">Probability shows smoothed per-bin mass. Density additionally normalizes by bin width, including angular-bin width for circular variables.</span>
+                  </span>
+                </span>
+                <div id="displayScaleGroup" class="toggle-group"></div>
+              </div>
+
+              <div class="filter-cluster">
+                <span class="cluster-title label-with-help">
+                  <span>Trace Style</span>
+                  <span class="help-wrap">
+                    <button type="button" class="help-badge" aria-label="Explain trace style">?</button>
+                    <span class="help-tooltip">Switch between the current filled traces and line-only curves without changing the selected data.</span>
+                  </span>
+                </span>
+                <div id="traceStyleGroup" class="toggle-group"></div>
+              </div>
+
+              <div class="filter-cluster">
+                <span class="cluster-title label-with-help">
+                  <span>Histogram Detail</span>
+                  <span class="help-wrap">
+                    <button type="button" class="help-badge" aria-label="Explain histogram detail">?</button>
+                    <span class="help-tooltip">Controls the number of histogram bins used to draw the current curves. Fine mode resolves narrower peaks but can look noisier.</span>
+                  </span>
+                </span>
+                <div id="binDetailGroup" class="toggle-group"></div>
+              </div>
+            </div>
+          </section>
         </div>
 
         <div class="controls">
@@ -157,15 +219,33 @@
 
         <div class="stats-strip">
           <div class="stat-box">
-            <span class="stat-label">Filtered PDB entries</span>
+            <span class="stat-label label-with-help">
+              <span>Filtered PDB entries</span>
+              <span class="help-wrap">
+                <button type="button" class="help-badge" aria-label="Explain Filtered PDB entries">?</button>
+                <span class="help-tooltip">The number of PDB entries that pass the current PDB-level filters before observation-level context or terminal filtering.</span>
+              </span>
+            </span>
             <span class="stat-value" id="filteredPdbCount">-</span>
           </div>
           <div class="stat-box">
-            <span class="stat-label">Plotted observations</span>
+            <span class="stat-label label-with-help">
+              <span>Plotted observations</span>
+              <span class="help-wrap">
+                <button type="button" class="help-badge" aria-label="Explain plotted observations">?</button>
+                <span class="help-tooltip">The number of individual rows that remain after both PDB-level and observation-level filters and are actually drawn in the current plot.</span>
+              </span>
+            </span>
             <span class="stat-value" id="filteredObservationCount">-</span>
           </div>
           <div class="stat-box">
-            <span class="stat-label">Current family rows</span>
+            <span class="stat-label label-with-help">
+              <span>Current family rows</span>
+              <span class="help-wrap">
+                <button type="button" class="help-badge" aria-label="Explain current family rows">?</button>
+                <span class="help-tooltip">The total number of precomputed rows loaded for the currently selected family before any filters are applied.</span>
+              </span>
+            </span>
             <span class="stat-value" id="loadedFamilyRows">-</span>
           </div>
           <div class="stat-box">

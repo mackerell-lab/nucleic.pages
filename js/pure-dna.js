@@ -536,6 +536,7 @@ function parseFamilyTable(text, familyMeta, maxPid) {
   const paramIds = familyMeta.param_ids;
   const pid = new Uint32Array(rowCount);
   const edgeFlag = new Uint8Array(rowCount);
+  const siteLabel = indexOf.site_label !== undefined ? new Array(rowCount) : null;
   const contextColumn = familyMeta.context_column ?? null;
   const context = contextColumn ? new Array(rowCount) : null;
   const secondaryContextColumn = familyMeta.secondary_context_column ?? null;
@@ -550,6 +551,7 @@ function parseFamilyTable(text, familyMeta, maxPid) {
     const rowPid = parseIntSafe(cols[indexOf.pid]);
     pid[rowIndex] = rowPid;
     edgeFlag[rowIndex] = edgeIndex !== undefined ? parseIntSafe(cols[edgeIndex]) : 0;
+    if (siteLabel) siteLabel[rowIndex] = String(cols[indexOf.site_label] ?? "").trim();
     if (context) context[rowIndex] = String(cols[indexOf[contextColumn]] ?? "").trim();
     if (secondaryContext) secondaryContext[rowIndex] = String(cols[indexOf[secondaryContextColumn]] ?? "").trim();
     if (pidStart[rowPid] === -1) pidStart[rowPid] = rowIndex;
@@ -566,6 +568,7 @@ function parseFamilyTable(text, familyMeta, maxPid) {
     pidStart,
     pidCount,
     edgeFlag,
+    siteLabel,
     context,
     contextEmptyValue: familyMeta.context_empty_value ?? "",
     secondaryContext,
@@ -1187,6 +1190,7 @@ function buildCurrentPlotCsv(snapshot) {
   const columns = [
     valueColumn,
     "pdb_id",
+    "site_label",
     "form_nakb",
     "method",
     "resolution_angstrom",
@@ -1229,6 +1233,7 @@ function buildCurrentPlotCsv(snapshot) {
         const exportRow = {
           [valueColumn]: Number.isFinite(displayValue) ? displayValue.toFixed(6) : "",
           pdb_id: String(row.pdbId).toUpperCase(),
+          site_label: snapshot.familyData.siteLabel?.[rowIndex] || "",
           form_nakb: FORM_META[row.form]?.label ?? row.form,
           method: row.method,
           resolution_angstrom: row.resolutionKnown && Number.isFinite(row.resolution) ? row.resolution.toFixed(2) : "",

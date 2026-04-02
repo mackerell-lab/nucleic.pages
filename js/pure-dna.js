@@ -1183,120 +1183,29 @@ function buildCurrentPlotCsvFilename(snapshot) {
 }
 
 function buildCurrentPlotCsv(snapshot) {
+  const familyMeta = snapshot.familyMeta;
+  const valueColumn = snapshot.filters.parameterId;
+  const contextColumn = familyMeta.context_column ?? null;
+  const secondaryContextColumn = familyMeta.secondary_context_column ?? null;
   const columns = [
-    "record_type",
-    "meta_key",
-    "meta_value",
-    "series_form",
-    "series_form_label",
-    "curve_point_index",
-    "plot_x_display",
-    "plot_x_internal",
-    "plot_x_raw",
-    "plot_y",
-    "plot_y_mode",
-    "pid",
+    valueColumn,
     "pdb_id",
-    "pdb_form_nakb",
-    "pdb_method",
-    "pdb_resolution_angstrom",
-    "pdb_cleanliness",
-    "pdb_has_duplex_core",
-    "pdb_all_residues_paired",
-    "pdb_residue_count",
-    "pdb_het_names",
-    "observation_index",
-    "observation_value_raw",
-    "observation_value_display",
-    "observation_context",
-    "observation_backbone_state",
-    "observation_terminal_flag",
+    "form_nakb",
+    "method",
+    "resolution_angstrom",
+    "cleanliness",
+    "het_names",
+    "residue_count",
   ];
+  if (contextColumn) columns.push(contextColumn);
+  if (secondaryContextColumn) columns.push(secondaryContextColumn);
+  columns.push("terminal_flag");
   const lines = [columns.join(",")];
   const pushRow = (row) => {
     lines.push(columns.map((column) => csvEscape(row[column] ?? "")).join(","));
   };
 
-  const filters = snapshot.filters;
-  const metaEntries = [
-    ["family_id", filters.familyId],
-    ["family_label", filters.familyLabel],
-    ["parameter_id", filters.parameterId],
-    ["parameter_label", filters.parameterLabel],
-    ["parameter_unit", filters.parameterUnit],
-    ["pdb_preset", filters.preset],
-    ["pdb_preset_label", filters.presetLabel],
-    ["cleanliness_filter", filters.cleanlinessLabel],
-    ["duplex_gate_filter", filters.duplexGateLabel],
-    ["method_filter", filters.methods.join("|")],
-    ["resolution_filter", filters.resolutionLabel],
-    ["form_filter_ui", filters.forms.join("|")],
-    ["context_filter", filters.contexts.join("|")],
-    ["backbone_state_filter", filters.backboneStates.join("|")],
-    ["terminal_policy", filters.terminalPolicyLabel],
-    ["circular_axis", filters.circularModeLabel],
-    ["smoothing_sigma", filters.smoothingSigma],
-    ["display_scale", filters.displayScaleLabel],
-    ["trace_style", filters.traceStyleLabel],
-    ["histogram_detail", filters.binDetailLabel],
-    ["filtered_pdb_entries", snapshot.allowed.rows.length],
-    ["plotted_observations", snapshot.accumulation.totalVisibleObservations],
-    ["current_family_rows", snapshot.familyData.rowCount],
-    ["plot_x_range", `${snapshot.range[0]} .. ${snapshot.range[1]}`],
-  ];
-  for (const [key, value] of metaEntries) {
-    pushRow({
-      record_type: "meta",
-      meta_key: key,
-      meta_value: value,
-    });
-  }
-
-  for (const row of snapshot.allowed.rows) {
-    pushRow({
-      record_type: "filtered_pdb",
-      pid: row.pid,
-      pdb_id: String(row.pdbId).toUpperCase(),
-      pdb_form_nakb: FORM_META[row.form]?.label ?? row.form,
-      pdb_method: row.method,
-      pdb_resolution_angstrom: row.resolutionKnown && Number.isFinite(row.resolution) ? row.resolution.toFixed(2) : "",
-      pdb_cleanliness: cleanlinessLabel(row),
-      pdb_has_duplex_core: row.hasDuplexCore ? 1 : 0,
-      pdb_all_residues_paired: row.allResiduesPaired ? 1 : 0,
-      pdb_residue_count: row.residueCount,
-      pdb_het_names: row.hetNames,
-    });
-  }
-
-  for (const [formId, seriesData] of Object.entries(snapshot.accumulation.series)) {
-    if (!seriesData.summary.n) continue;
-    const label = FORM_META[formId]?.label ?? formId;
-    for (let index = 0; index < seriesData.x.length; index += 1) {
-      const internalX = seriesData.x[index];
-      const rawX = snapshot.paramMeta.isCircular
-        ? (seriesData.hoverAngles?.[index] ?? internalX)
-        : internalX;
-      const displayX = snapshot.paramMeta.isCircular
-        ? (seriesData.axisMode === "signed_180"
-            ? (seriesData.hoverDisplayAngles?.[index] ?? internalX)
-            : internalX)
-        : internalX;
-      pushRow({
-        record_type: "curve_point",
-        series_form: formId,
-        series_form_label: label,
-        curve_point_index: index,
-        plot_x_display: Number.isFinite(displayX) ? displayX.toFixed(6) : "",
-        plot_x_internal: Number.isFinite(internalX) ? internalX.toFixed(6) : "",
-        plot_x_raw: Number.isFinite(rawX) ? rawX.toFixed(6) : "",
-        plot_y: Number.isFinite(seriesData.y[index]) ? seriesData.y[index].toFixed(10) : "",
-        plot_y_mode: currentDisplayScaleLabel(),
-      });
-    }
-  }
-
   const seriesIds = selectedFormIds();
-  let observationIndex = 0;
   for (const formId of seriesIds) {
     const metaRows = snapshot.allowedRowsByForm?.[formId] ?? [];
     for (const row of metaRows) {
@@ -1320,28 +1229,20 @@ function buildCurrentPlotCsv(snapshot) {
           snapshot.accumulation.displayCut,
           snapshot.accumulation.axisMode,
         );
-        pushRow({
-          record_type: "observation",
-          series_form: formId,
-          series_form_label: FORM_META[formId]?.label ?? formId,
-          pid: row.pid,
+        const exportRow = {
+          [valueColumn]: Number.isFinite(displayValue) ? displayValue.toFixed(6) : "",
           pdb_id: String(row.pdbId).toUpperCase(),
-          pdb_form_nakb: FORM_META[row.form]?.label ?? row.form,
-          pdb_method: row.method,
-          pdb_resolution_angstrom: row.resolutionKnown && Number.isFinite(row.resolution) ? row.resolution.toFixed(2) : "",
-          pdb_cleanliness: cleanlinessLabel(row),
-          pdb_has_duplex_core: row.hasDuplexCore ? 1 : 0,
-          pdb_all_residues_paired: row.allResiduesPaired ? 1 : 0,
-          pdb_residue_count: row.residueCount,
-          pdb_het_names: row.hetNames,
-          observation_index: observationIndex,
-          observation_value_raw: value.toFixed(6),
-          observation_value_display: Number.isFinite(displayValue) ? displayValue.toFixed(6) : "",
-          observation_context: contextValue,
-          observation_backbone_state: backboneState,
-          observation_terminal_flag: snapshot.familyData.edgeFlag[rowIndex],
-        });
-        observationIndex += 1;
+          form_nakb: FORM_META[row.form]?.label ?? row.form,
+          method: row.method,
+          resolution_angstrom: row.resolutionKnown && Number.isFinite(row.resolution) ? row.resolution.toFixed(2) : "",
+          cleanliness: cleanlinessLabel(row),
+          het_names: row.hetNames,
+          residue_count: row.residueCount,
+          terminal_flag: snapshot.familyData.edgeFlag[rowIndex],
+        };
+        if (contextColumn) exportRow[contextColumn] = contextValue;
+        if (secondaryContextColumn) exportRow[secondaryContextColumn] = backboneState;
+        pushRow(exportRow);
       }
     }
   }

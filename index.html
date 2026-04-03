@@ -349,14 +349,24 @@
               <span>Color Scale</span>
               <span class="help-wrap">
                 <button type="button" class="help-badge" aria-label="Explain Color Scale">?</button>
-                <span class="help-tooltip">Log scale avoids dominant peaks washing out fine structure in the heatmap.</span>
+                <span class="help-tooltip">Linear maps color directly to the current Probability/Density values. Log applies a log transform to those same values so weaker populated regions stay visible.</span>
               </span>
             </span>
             <div id="jointColorScaleGroup" class="toggle-group"></div>
           </div>
+          <div class="filter-cluster">
+            <span class="cluster-title label-with-help">
+              <span>Color Palette</span>
+              <span class="help-wrap">
+                <button type="button" class="help-badge" aria-label="Explain Color Palette">?</button>
+                <span class="help-tooltip">Only changes the heatmap colors. It does not change filtering, binning, smoothing, or normalization. Hotspots matches the older CMAP-style report heatmaps in this project.</span>
+              </span>
+            </span>
+            <div id="jointPaletteGroup" class="toggle-group"></div>
+          </div>
         </div>
 
-        <div id="jointPlot" class="plot-panel">
+        <div id="jointPlot" class="plot-panel joint-plot-panel">
           <div class="empty-state">Select a second parameter above to generate a joint distribution.</div>
         </div>
 
@@ -390,6 +400,16 @@
               </span>
             </span>
             <span class="stat-value" id="jointPearsonR">-</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label label-with-help">
+              <span>Circular corr.</span>
+              <span class="help-wrap">
+                <button type="button" class="help-badge" aria-label="Explain Circular correlation">?</button>
+                <span class="help-tooltip">Circular-circular correlation coefficient computed from the original angular values. This is only defined when both axes are circular parameters.</span>
+              </span>
+            </span>
+            <span class="stat-value" id="jointCircularR">-</span>
           </div>
           <div class="stat-box">
             <span class="stat-label label-with-help">

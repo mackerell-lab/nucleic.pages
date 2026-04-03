@@ -83,6 +83,7 @@ const state = {
   family2Id: null,
   parameter2Id: null,
   jointColorScale: "log",
+  jointPalette: "warm",
 };
 
 function el(id) {
@@ -112,13 +113,28 @@ function renderInteractionError(error) {
   `;
 }
 
+function renderJointInteractionError(error) {
+  console.error(error);
+  const plotNode = el("jointPlot");
+  if (!plotNode) return;
+  if (typeof Plotly !== "undefined" && plotNode.data) Plotly.purge(plotNode);
+  const message = escapeHtml(error?.message || "Unknown error");
+  plotNode.innerHTML = `
+    <div class="empty-state">
+      Could not refresh the 2D joint analysis.<br />
+      <span class="meta">${message}</span>
+    </div>
+  `;
+  el("jointStats").hidden = true;
+}
+
 function triggerFiltersAndPlot() {
   renderFiltersAndPlot().catch(renderInteractionError);
 }
 
 function triggerPlot(options = {}) {
   renderPlot(options).catch(renderInteractionError);
-  renderJointPlot().catch(renderInteractionError);
+  renderJointPlot().catch(renderJointInteractionError);
 }
 
 function formatInt(value) {
@@ -991,6 +1007,13 @@ function displayValueForObservation(value, paramMeta, displayCut = 0, axisMode =
   return wrapCircular(wrapped - displayCut, period);
 }
 
+function circularPlotCoordinate(value, paramMeta, displayCut = 0) {
+  if (!Number.isFinite(value)) return null;
+  const period = paramMeta.period ?? 360;
+  const wrapped = wrapCircular(value, period);
+  return wrapCircular(wrapped - displayCut, period);
+}
+
 function renderPdbTablePage(rows, bodyId, pageLabelId, prevId, nextId, pageIndex) {
   const tbody = el(bodyId);
   const pageLabel = el(pageLabelId);
@@ -1800,7 +1823,7 @@ async function renderPlot(options = {}) {
 async function renderFiltersAndPlot() {
   renderFilters();
   await renderPlot();
-  await renderJointPlot();
+  await renderJointPlot().catch(renderJointInteractionError);
 }
 
 // ---------------------------------------------------------------------------
@@ -1811,6 +1834,55 @@ const JOINT_COLOR_SCALE_OPTIONS = [
   { id: "log", label: "Log" },
   { id: "linear", label: "Linear" },
 ];
+
+const JOINT_PALETTE_OPTIONS = [
+  { id: "hotspots", label: "Hotspots" },
+  { id: "warm", label: "Warm" },
+  { id: "viridis", label: "Viridis" },
+  { id: "cividis", label: "Cividis" },
+  { id: "magma", label: "Magma" },
+  { id: "inferno", label: "Inferno" },
+  { id: "plasma", label: "Plasma" },
+  { id: "turbo", label: "Turbo" },
+  { id: "blues", label: "Blues" },
+  { id: "greys", label: "Greys" },
+];
+
+const HOTSPOTS_COLORSCALE = [
+  [0.0, "#00205b"],
+  [0.0526, "#003b8e"],
+  [0.1053, "#0051a8"],
+  [0.1579, "#0069b4"],
+  [0.2105, "#0080b9"],
+  [0.2632, "#0097bd"],
+  [0.3158, "#00afb8"],
+  [0.3684, "#00c6a7"],
+  [0.4211, "#00dd8c"],
+  [0.4737, "#2ff272"],
+  [0.5263, "#7fff5a"],
+  [0.5789, "#c7ff54"],
+  [0.6316, "#ffe64c"],
+  [0.6842, "#ffb53b"],
+  [0.7368, "#ff7b2e"],
+  [0.7895, "#ff4b2c"],
+  [0.8421, "#f2252e"],
+  [0.8947, "#d8002c"],
+  [0.9474, "#b30027"],
+  [1.0, "#7f001d"],
+];
+
+const JOINT_PALETTE_MAP = {
+  hotspots: HOTSPOTS_COLORSCALE,
+  warm: "YlOrRd",
+  viridis: "Viridis",
+  cividis: "Cividis",
+  magma: "Magma",
+  inferno: "Inferno",
+  plasma: "Plasma",
+  turbo: "Turbo",
+  blues: "Blues",
+  greys: "Greys",
+};
 
 const FAMILY_LEVEL_GROUPS = {
   residue: ["backbone", "pseudo_torsion", "sugar_torsion", "pucker", "custom_angles"],
@@ -1879,7 +1951,13 @@ function syncJointSelectors() {
 function bindJointControls() {
   renderSingleChoiceGroup("jointColorScaleGroup", JOINT_COLOR_SCALE_OPTIONS, state.jointColorScale, (nextId) => {
     state.jointColorScale = nextId;
-    renderJointPlot().catch(renderInteractionError);
+    renderFilters();
+    renderJointPlot().catch(renderJointInteractionError);
+  });
+  renderSingleChoiceGroup("jointPaletteGroup", JOINT_PALETTE_OPTIONS, state.jointPalette, (nextId) => {
+    state.jointPalette = nextId;
+    renderFilters();
+    renderJointPlot().catch(renderJointInteractionError);
   });
 
   el("family2Select").onchange = (event) => {
@@ -1887,12 +1965,12 @@ function bindJointControls() {
     state.family2Id = value || null;
     state.parameter2Id = null;
     syncJointSelectors();
-    renderJointPlot().catch(renderInteractionError);
+    renderJointPlot().catch(renderJointInteractionError);
   };
 
   el("parameter2Select").onchange = (event) => {
     state.parameter2Id = event.target.value || null;
-    renderJointPlot().catch(renderInteractionError);
+    renderJointPlot().catch(renderJointInteractionError);
   };
 }
 
@@ -1951,17 +2029,12 @@ function collectJointPairs(familyData1, paramId1, familyData2, paramId2, allowed
 
 function bin2d(xs, ys, xMeta, yMeta, xRange, yRange, binsX, binsY) {
   const grid = new Float64Array(binsX * binsY);
-  const xPeriod = xMeta.isCircular ? (xMeta.period ?? 360) : null;
-  const yPeriod = yMeta.isCircular ? (yMeta.period ?? 360) : null;
   const xSpan = xRange[1] - xRange[0];
   const ySpan = yRange[1] - yRange[0];
 
   for (let i = 0; i < xs.length; i += 1) {
-    let x = xs[i];
-    let y = ys[i];
-    if (xPeriod) x = wrapCircular(x, xPeriod);
-    if (yPeriod) y = wrapCircular(y, yPeriod);
-
+    const x = xs[i];
+    const y = ys[i];
     let bx = Math.floor(((x - xRange[0]) / xSpan) * binsX);
     let by = Math.floor(((y - yRange[0]) / ySpan) * binsY);
     if (bx < 0) bx = 0;
@@ -2033,10 +2106,170 @@ function computeCorrelation(xs, ys) {
   return { r, r2: r * r };
 }
 
+function computeCircularCorrelation(xs, xMeta, ys, yMeta) {
+  if (!xMeta?.isCircular || !yMeta?.isCircular) return NaN;
+  const n = Math.min(xs.length, ys.length);
+  if (n < 3) return NaN;
+
+  const xPeriod = xMeta.period ?? 360;
+  const yPeriod = yMeta.period ?? 360;
+  const xScale = (2 * Math.PI) / xPeriod;
+  const yScale = (2 * Math.PI) / yPeriod;
+
+  let sumXSin = 0;
+  let sumXCos = 0;
+  let sumYSin = 0;
+  let sumYCos = 0;
+  const xAngles = new Array(n);
+  const yAngles = new Array(n);
+
+  for (let i = 0; i < n; i += 1) {
+    const xAngle = wrapCircular(xs[i], xPeriod) * xScale;
+    const yAngle = wrapCircular(ys[i], yPeriod) * yScale;
+    xAngles[i] = xAngle;
+    yAngles[i] = yAngle;
+    sumXSin += Math.sin(xAngle);
+    sumXCos += Math.cos(xAngle);
+    sumYSin += Math.sin(yAngle);
+    sumYCos += Math.cos(yAngle);
+  }
+
+  const meanX = Math.atan2(sumXSin, sumXCos);
+  const meanY = Math.atan2(sumYSin, sumYCos);
+
+  let numerator = 0;
+  let denomX = 0;
+  let denomY = 0;
+  for (let i = 0; i < n; i += 1) {
+    const sx = Math.sin(xAngles[i] - meanX);
+    const sy = Math.sin(yAngles[i] - meanY);
+    numerator += sx * sy;
+    denomX += sx * sx;
+    denomY += sy * sy;
+  }
+
+  const denom = Math.sqrt(denomX * denomY);
+  if (!(denom > 0)) return NaN;
+  return numerator / denom;
+}
+
 function jointBinCount(paramMeta) {
   const standard = paramMeta.isCircular ? 72 : 48;
   if (state.binDetail !== "fine") return standard;
   return paramMeta.isCircular ? 144 : 96;
+}
+
+function computeRangeFromValues(values, defaultRange = null) {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return defaultRange ?? [0, 1];
+  }
+
+  let dataRange;
+  if (Math.abs(max - min) < 1e-9) {
+    const pad = Math.max(0.5, Math.abs(max) * 0.1);
+    dataRange = [min - pad, max + pad];
+  } else {
+    const pad = Math.max((max - min) * 0.05, 0.5);
+    dataRange = [min - pad, max + pad];
+  }
+
+  if (!defaultRange) return dataRange;
+  if (min >= defaultRange[0] && max <= defaultRange[1]) return defaultRange;
+  return [
+    Math.min(defaultRange[0], dataRange[0]),
+    Math.max(defaultRange[1], dataRange[1]),
+  ];
+}
+
+function circularCountsFromValues(values, period, bins) {
+  const counts = new Uint32Array(bins);
+  const width = period / bins;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    const wrapped = wrapCircular(value, period);
+    let binIndex = Math.floor(wrapped / width);
+    if (binIndex >= bins) binIndex = 0;
+    counts[binIndex] += 1;
+  }
+  return counts;
+}
+
+function buildJointAxisSpec(paramMeta, rawValues) {
+  if (!paramMeta.isCircular) {
+    return {
+      values: rawValues.filter((value) => Number.isFinite(value)),
+      range: computeRangeFromValues(rawValues, paramMeta.display_range_default ?? null),
+      displayCut: 0,
+      axisMode: "linear",
+    };
+  }
+
+  const period = paramMeta.period ?? 360;
+  const bins = jointBinCount(paramMeta);
+  const seamChoice = circularDisplayConfig(circularCountsFromValues(rawValues, period, bins), paramMeta);
+  const values = rawValues
+    .filter((value) => Number.isFinite(value))
+    .map((value) => circularPlotCoordinate(value, paramMeta, seamChoice.displayCut));
+  const range = [0, period];
+  return {
+    values,
+    range,
+    displayCut: seamChoice.displayCut,
+    axisMode: seamChoice.axisMode,
+  };
+}
+
+function buildJointCircularAxis(paramMeta, displayCut, axisMode) {
+  const period = paramMeta.period ?? 360;
+  const ticks = buildCircularTickSpec(period, displayCut, false, axisMode);
+  return {
+    range: [0, period],
+    tickvals: ticks.tickvals,
+    ticktext: ticks.ticktext,
+    automargin: true,
+    zeroline: false,
+  };
+}
+
+function normalizeJointGrid(grid, binsX, binsY, xRange, yRange) {
+  const total = grid.reduce((sum, value) => sum + value, 0);
+  if (!total) return new Float64Array(grid.length);
+  const xBinWidth = (xRange[1] - xRange[0]) / binsX;
+  const yBinWidth = (yRange[1] - yRange[0]) / binsY;
+  const area = xBinWidth * yBinWidth;
+  const normalized = new Float64Array(grid.length);
+  for (let index = 0; index < grid.length; index += 1) {
+    const probability = grid[index] / total;
+    normalized[index] = state.displayScale === "density" && area > 0
+      ? probability / area
+      : probability;
+  }
+  return normalized;
+}
+
+function jointIntensityLabel() {
+  return state.displayScale === "density" ? "Density (smoothed)" : "Probability (smoothed)";
+}
+
+function jointAxisHoverValues(centers, paramMeta, axisSpec) {
+  if (!paramMeta.isCircular) {
+    return {
+      original: centers.slice(),
+      displayed: centers.slice(),
+    };
+  }
+  const period = paramMeta.period ?? 360;
+  const original = centers.map((center) => wrapCircular(center + axisSpec.displayCut, period));
+  const displayed = original.map((value) => displayValueForObservation(value, paramMeta, axisSpec.displayCut, axisSpec.axisMode));
+  return { original, displayed };
 }
 
 async function renderJointPlot() {
@@ -2074,29 +2307,44 @@ async function renderJointPlot() {
     return;
   }
 
-  const xRange = computeEffectiveRange(xMeta, familyData1, xParamId, allowed.mask);
-  const yRange = computeEffectiveRange(yMeta, familyData2, yParamId, allowed.mask);
+  const xAxisSpec = buildJointAxisSpec(xMeta, pairs.xs);
+  const yAxisSpec = buildJointAxisSpec(yMeta, pairs.ys);
+  const xRange = xAxisSpec.range;
+  const yRange = yAxisSpec.range;
 
   const binsX = jointBinCount(xMeta);
   const binsY = jointBinCount(yMeta);
 
-  let grid = bin2d(pairs.xs, pairs.ys, xMeta, yMeta, xRange, yRange, binsX, binsY);
+  let grid = bin2d(xAxisSpec.values, yAxisSpec.values, xMeta, yMeta, xRange, yRange, binsX, binsY);
 
   const sigma = parseFloat(state.smoothingSigma) || 0;
   grid = smooth2d(grid, binsX, binsY, sigma, xMeta.isCircular, yMeta.isCircular);
+  const intensity = normalizeJointGrid(grid, binsX, binsY, xRange, yRange);
+
+  let minPositive = Infinity;
+  let maxIntensity = 0;
+  for (const value of intensity) {
+    if (!Number.isFinite(value) || value <= 0) continue;
+    if (value < minPositive) minPositive = value;
+    if (value > maxIntensity) maxIntensity = value;
+  }
 
   const zData = [];
+  const rawData = [];
   for (let row = 0; row < binsY; row += 1) {
     const rowArr = new Array(binsX);
+    const rawRow = new Array(binsX);
     for (let col = 0; col < binsX; col += 1) {
-      const val = grid[row * binsX + col];
+      const val = intensity[row * binsX + col];
+      rawRow[col] = val;
       if (state.jointColorScale === "log") {
-        rowArr[col] = val > 0 ? Math.log10(val + 1) : 0;
+        rowArr[col] = val > 0 ? Math.log10(val) : null;
       } else {
         rowArr[col] = val;
       }
     }
     zData.push(rowArr);
+    rawData.push(rawRow);
   }
 
   const xCenters = [];
@@ -2112,42 +2360,80 @@ async function renderJointPlot() {
 
   const xTitle = xMeta.unit ? `${xMeta.display_name} (${xMeta.unit})` : xMeta.display_name;
   const yTitle = yMeta.unit ? `${yMeta.display_name} (${yMeta.unit})` : yMeta.display_name;
-
-  const buildAxisConfig = (meta, range) => {
-    if (meta.isCircular) {
-      const ticks = buildCircularTickSpec(meta.period ?? 360, 0, false, state.circularMode === "auto" ? "wrap_360" : state.circularMode);
-      return {
-        range: [0, meta.period ?? 360],
-        tickvals: ticks.tickvals,
-        ticktext: ticks.ticktext,
-        automargin: true,
-        zeroline: false,
-      };
+  const xAxis = xMeta.isCircular
+    ? buildJointCircularAxis(xMeta, xAxisSpec.displayCut, xAxisSpec.axisMode)
+    : { range: xRange, automargin: true, zeroline: false };
+  const yAxis = yMeta.isCircular
+    ? buildJointCircularAxis(yMeta, yAxisSpec.displayCut, yAxisSpec.axisMode)
+    : { range: yRange, automargin: true, zeroline: false };
+  const intensityLabel = jointIntensityLabel();
+  const xHover = jointAxisHoverValues(xCenters, xMeta, xAxisSpec);
+  const yHover = jointAxisHoverValues(yCenters, yMeta, yAxisSpec);
+  const customData = [];
+  for (let row = 0; row < binsY; row += 1) {
+    const cdRow = new Array(binsX);
+    for (let col = 0; col < binsX; col += 1) {
+      cdRow[col] = [
+        xHover.displayed[col],
+        xHover.original[col],
+        yHover.displayed[row],
+        yHover.original[row],
+        rawData[row][col],
+      ];
     }
-    return { range, automargin: true, zeroline: false };
-  };
+    customData.push(cdRow);
+  }
+
+  const xHoverLine = xMeta.isCircular
+    ? (xAxisSpec.axisMode === "signed_180"
+        ? `${xMeta.display_name} (view): %{customdata[0]:.2f}<br>${xMeta.display_name} (angle): %{customdata[1]:.2f}`
+        : `${xMeta.display_name}: %{customdata[1]:.2f}`)
+    : `${xMeta.display_name}: %{customdata[0]:.2f}`;
+  const yHoverLine = yMeta.isCircular
+    ? (yAxisSpec.axisMode === "signed_180"
+        ? `${yMeta.display_name} (view): %{customdata[2]:.2f}<br>${yMeta.display_name} (angle): %{customdata[3]:.2f}`
+        : `${yMeta.display_name}: %{customdata[3]:.2f}`)
+    : `${yMeta.display_name}: %{customdata[2]:.2f}`;
+  const hoverTemplate = `${xHoverLine}<br>${yHoverLine}<br>${intensityLabel}: %{customdata[4]:.4g}<extra></extra>`;
 
   const trace = {
     x: xCenters,
     y: yCenters,
     z: zData,
+    customdata: customData,
     type: "heatmap",
-    colorscale: "YlOrRd",
+    colorscale: JOINT_PALETTE_MAP[state.jointPalette] ?? "YlOrRd",
     zsmooth: false,
-    hovertemplate: `${xMeta.display_name}: %{x:.2f}<br>${yMeta.display_name}: %{y:.2f}<br>Intensity: %{z:.2f}<extra></extra>`,
+    hovertemplate: hoverTemplate,
     colorbar: {
-      title: { text: state.jointColorScale === "log" ? "log₁₀(count+1)" : "Count", side: "right" },
+      title: {
+        text: state.jointColorScale === "log" ? `log₁₀ ${intensityLabel}` : intensityLabel,
+        side: "right",
+      },
       thickness: 14,
       len: 0.9,
     },
   };
+  if (state.jointColorScale === "linear") {
+    trace.zmin = 0;
+    trace.zmax = maxIntensity > 0 ? maxIntensity : undefined;
+  } else if (Number.isFinite(minPositive) && minPositive < Infinity && maxIntensity > 0) {
+    trace.zmin = Math.log10(minPositive);
+    trace.zmax = Math.log10(maxIntensity);
+  }
 
   const layout = {
     margin: { l: 64, r: 22, t: 28, b: 72, pad: 4 },
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(255,253,247,0.65)",
-    xaxis: { title: { text: xTitle, standoff: 12 }, ...buildAxisConfig(xMeta, xRange) },
-    yaxis: { title: { text: yTitle, standoff: 12 }, ...buildAxisConfig(yMeta, yRange) },
+    xaxis: {
+      title: { text: xTitle, standoff: 12 },
+      ...xAxis,
+    },
+    yaxis: {
+      title: { text: yTitle, standoff: 12 },
+      ...yAxis,
+    },
   };
 
   const plotNode = el("jointPlot");
@@ -2160,10 +2446,12 @@ async function renderJointPlot() {
     await Plotly.newPlot("jointPlot", [trace], layout, config);
   }
 
-  const corr = computeCorrelation(pairs.xs, pairs.ys);
+  const corr = computeCorrelation(xAxisSpec.values, yAxisSpec.values);
+  const circularCorr = computeCircularCorrelation(pairs.xs, xMeta, pairs.ys, yMeta);
   el("jointMatchedN").textContent = formatInt(pairs.n);
   el("jointMatchedPdbs").textContent = formatInt(pairs.pdbCount);
   el("jointPearsonR").textContent = Number.isFinite(corr.r) ? corr.r.toFixed(4) : "-";
+  el("jointCircularR").textContent = Number.isFinite(circularCorr) ? circularCorr.toFixed(4) : "-";
   el("jointRSquared").textContent = Number.isFinite(corr.r2) ? corr.r2.toFixed(4) : "-";
   el("jointStats").hidden = false;
 }

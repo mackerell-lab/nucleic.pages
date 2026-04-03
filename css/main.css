@@ -662,6 +662,23 @@ select {
   margin-bottom: 14px;
 }
 
+.joint-plot-panel {
+  width: min(100%, 860px);
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+  margin: 0 auto;
+}
+
+.joint-plot-panel .js-plotly-plot,
+.joint-plot-panel .plot-container,
+.joint-plot-panel .svg-container {
+  height: 100% !important;
+}
+
+.joint-plot-panel .empty-state {
+  min-height: 100%;
+}
+
 @media (max-width: 1120px) {
   .small-multiple-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

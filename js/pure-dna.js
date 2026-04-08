@@ -59,6 +59,11 @@ const JOINT_PLOT_TYPE_OPTIONS = [
   { id: "heatmap_contour", label: "Heatmap + Contour" },
 ];
 
+const JOINT_CONTOUR_LABEL_OPTIONS = [
+  { id: "off", label: "Off" },
+  { id: "on", label: "On" },
+];
+
 const MD_BDNA_46 = new Set([
   "109d","126d","127d","158d","196d","1bna","1d23","1d43","1d44","1d45",
   "1d46","1d56","1d63","1dcv","1dou","1fq2","1jgr","1m6f","1s2r","2b0k",
@@ -105,6 +110,7 @@ const state = {
   jointContexts: new Set(),
   jointBackboneStates: new Set(),
   jointPlotType: "heatmap",
+  jointContourLabels: "off",
   jointColorScale: "log",
   jointPalette: "warm",
 };
@@ -2038,6 +2044,11 @@ function bindJointControls() {
     renderFilters();
     renderJointPlot().catch(renderJointInteractionError);
   });
+  renderSingleChoiceGroup("jointContourLabelsGroup", JOINT_CONTOUR_LABEL_OPTIONS, state.jointContourLabels, (nextId) => {
+    state.jointContourLabels = nextId;
+    renderFilters();
+    renderJointPlot().catch(renderJointInteractionError);
+  });
 
   renderSingleChoiceGroup("jointColorScaleGroup", JOINT_COLOR_SCALE_OPTIONS, state.jointColorScale, (nextId) => {
     state.jointColorScale = nextId;
@@ -2485,7 +2496,7 @@ function buildJointPlotTraces(zData, xCenters, yCenters, customData, hoverTempla
     zmax,
     hovertemplate: hoverTemplate,
     contours: {
-      showlabels: false,
+      showlabels: state.jointContourLabels === "on",
     },
   };
 

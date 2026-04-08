@@ -111,15 +111,15 @@ const state = {
   pdbPreset: null,
   family2Id: null,
   parameter2Id: null,
-  jointJoinMode: "same_level",
+  jointJoinMode: "pair_residue",
   jointResidueSide: "both",
   jointContexts: new Set(),
   jointBackboneStates: new Set(),
-  jointPlotType: "heatmap",
+  jointPlotType: "heatmap_contour",
   jointContourLabels: "off",
   jointContourWidth: "standard",
   jointColorScale: "log",
-  jointPalette: "warm",
+  jointPalette: "hotspots",
 };
 
 function el(id) {

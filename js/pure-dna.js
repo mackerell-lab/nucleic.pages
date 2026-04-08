@@ -2650,6 +2650,13 @@ async function boot() {
   state.resolution = state.manifest.defaults.resolution;
   state.forms = new Set(state.manifest.defaults.forms ?? formOptions().map((item) => item.id));
   resetContextsForFamily();
+  if (Array.isArray(state.manifest.defaults.contexts)) {
+    const validContextIds = new Set(currentContextOptions().map((item) => item.id));
+    const selectedContextIds = state.manifest.defaults.contexts.filter((id) => validContextIds.has(id));
+    if (selectedContextIds.length) {
+      state.contexts = new Set(selectedContextIds);
+    }
+  }
   state.terminalPolicy = state.manifest.defaults.terminal_policy;
 
   const pdbManifestText = await fetchTextMaybeGzip(`./assets/pure_dna/${pathFromRelative(state.manifest.file_map.pdb_manifest)}`);

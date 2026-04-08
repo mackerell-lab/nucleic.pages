@@ -29,19 +29,22 @@
     }
   },
   "defaults": {
-    "cleanliness": "conservative",
+    "cleanliness": "relaxed",
     "duplex_gate": "any",
     "methods": [
-      "xray",
-      "nmr"
+      "xray"
     ],
-    "resolution": "any",
+    "resolution": "le_3_0",
     "forms": [
-      "adna",
-      "bdna",
-      "zdna"
+      "bdna"
     ],
-    "terminal_policy": "include",
+    "contexts": [
+      "A-T",
+      "C-G",
+      "G-C",
+      "T-A"
+    ],
+    "terminal_policy": "exclude",
     "family_id": "base_pair",
     "parameter_id": "shear"
   },

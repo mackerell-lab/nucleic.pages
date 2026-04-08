@@ -327,9 +327,39 @@
           <h2>2D Joint Analysis</h2>
           <p>
             Select a second parameter to generate a joint distribution heatmap.
-            Only families at the same observation level can be paired.
-            Observations are matched by PDB entry and site label.
+            Same-level pairing remains available, and pair-level parameters can also be expanded onto residue-level measurements for base-pair versus local torsion/pucker analysis.
           </p>
+        </div>
+
+        <div class="joint-controls">
+          <div class="filter-cluster">
+            <span class="cluster-title label-with-help">
+              <span>Join Mode</span>
+              <span class="help-wrap">
+                <button type="button" class="help-badge" aria-label="Explain Join Mode">?</button>
+                <span class="help-tooltip">Same-level matches rows by PDB entry and identical site label. Pair -&gt; Residue expands each pair observation into residue-side observations for the two nucleotides in that pair.</span>
+              </span>
+            </span>
+            <div id="jointJoinModeGroup" class="toggle-group"></div>
+          </div>
+          <div id="jointResidueSideCluster" class="filter-cluster" hidden>
+            <span class="cluster-title label-with-help">
+              <span>Residue Side</span>
+              <span class="help-wrap">
+                <button type="button" class="help-badge" aria-label="Explain Residue Side">?</button>
+                <span class="help-tooltip">Choose whether the residue-side y parameter is collected from both nucleotides in each base pair, or only from nt1 or nt2.</span>
+              </span>
+            </span>
+            <div id="jointResidueSideGroup" class="toggle-group"></div>
+          </div>
+          <div id="jointResidueContextCluster" class="filter-cluster" hidden>
+            <span id="jointResidueContextTitle" class="cluster-title">Residue Context</span>
+            <div id="jointResidueContextGroup" class="toggle-group multi"></div>
+          </div>
+          <div id="jointResidueBackboneCluster" class="filter-cluster" hidden>
+            <span id="jointResidueBackboneTitle" class="cluster-title">Backbone State</span>
+            <div id="jointResidueBackboneGroup" class="toggle-group multi"></div>
+          </div>
         </div>
 
         <div class="controls">
@@ -376,7 +406,7 @@
               <span>Matched observations</span>
               <span class="help-wrap">
                 <button type="button" class="help-badge" aria-label="Explain Matched observations">?</button>
-                <span class="help-tooltip">Rows where the x parameter and y parameter both have finite values for the same site in the same PDB entry.</span>
+                <span class="help-tooltip">Rows where the selected x and y values are both finite after the current join mode is applied. In Pair -&gt; Residue mode, one base pair can contribute up to two observations.</span>
               </span>
             </span>
             <span class="stat-value" id="jointMatchedN">-</span>

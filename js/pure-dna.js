@@ -41,6 +41,17 @@ const BIN_DETAIL_OPTIONS = [
   { id: "fine", label: "Fine" },
 ];
 
+const JOINT_JOIN_MODE_OPTIONS = [
+  { id: "same_level", label: "Same-level" },
+  { id: "pair_residue", label: "Pair -> Residue" },
+];
+
+const JOINT_RESIDUE_SIDE_OPTIONS = [
+  { id: "both", label: "Both" },
+  { id: "nt1", label: "nt1 only" },
+  { id: "nt2", label: "nt2 only" },
+];
+
 const MD_BDNA_46 = new Set([
   "109d","126d","127d","158d","196d","1bna","1d23","1d43","1d44","1d45",
   "1d46","1d56","1d63","1dcv","1dou","1fq2","1jgr","1m6f","1s2r","2b0k",
@@ -82,6 +93,10 @@ const state = {
   pdbPreset: null,
   family2Id: null,
   parameter2Id: null,
+  jointJoinMode: "same_level",
+  jointResidueSide: "both",
+  jointContexts: new Set(),
+  jointBackboneStates: new Set(),
   jointColorScale: "log",
   jointPalette: "warm",
 };
@@ -625,6 +640,28 @@ function currentBackboneStateLabel() {
   return currentFamilyMeta()?.secondary_context_label ?? "Backbone State";
 }
 
+function currentFamily2Meta() {
+  return state.family2Id ? state.manifest?.families?.[state.family2Id] ?? null : null;
+}
+
+function jointResidueContextOptions() {
+  if (state.jointJoinMode !== "pair_residue") return [];
+  return currentFamily2Meta()?.context_options ?? [];
+}
+
+function jointResidueContextLabel() {
+  return currentFamily2Meta()?.context_label ?? "Residue Context";
+}
+
+function jointResidueBackboneStateOptions() {
+  if (state.jointJoinMode !== "pair_residue") return [];
+  return currentFamily2Meta()?.secondary_context_options ?? [];
+}
+
+function jointResidueBackboneStateLabel() {
+  return currentFamily2Meta()?.secondary_context_label ?? "Backbone State";
+}
+
 function selectedFormIds() {
   const selected = [...state.forms].filter((formId) => FORM_META[formId]);
   return selected.length ? selected : Object.keys(FORM_META);
@@ -659,6 +696,11 @@ function selectedContextsLabel() {
 function resetContextsForFamily() {
   state.contexts = new Set(currentContextOptions().map((item) => item.id));
   state.backboneStates = new Set(currentBackboneStateOptions().map((item) => item.id));
+}
+
+function resetJointResidueFilters() {
+  state.jointContexts = new Set(jointResidueContextOptions().map((item) => item.id));
+  state.jointBackboneStates = new Set(jointResidueBackboneStateOptions().map((item) => item.id));
 }
 
 function passesCleanliness(row) {
@@ -728,21 +770,29 @@ function allowedPdbRows(allowedPidMask) {
   return rowsSortedByPdb(rows);
 }
 
-function rowPassesObservationFilters(familyData, rowIndex) {
+function rowPassesObservationFiltersWithSets(familyData, rowIndex, contextSet, backboneStateSet) {
   if (state.terminalPolicy === "exclude" && familyData.edgeFlag[rowIndex] === 1) return false;
   const rawContextValue = familyData.context?.[rowIndex];
   if (familyData.context) {
     const contextValue = rawContextValue || familyData.contextEmptyValue || "";
     if (!contextValue) return false;
-    if (!state.contexts.has(contextValue)) return false;
+    if (!contextSet.has(contextValue)) return false;
   }
   const backboneStateValue = familyData.secondaryContext?.[rowIndex];
   if (familyData.secondaryContext) {
     const normalizedState = backboneStateValue || familyData.secondaryContextEmptyValue || "";
     if (!normalizedState) return false;
-    if (!state.backboneStates.has(normalizedState)) return false;
+    if (!backboneStateSet.has(normalizedState)) return false;
   }
   return true;
+}
+
+function rowPassesObservationFilters(familyData, rowIndex) {
+  return rowPassesObservationFiltersWithSets(familyData, rowIndex, state.contexts, state.backboneStates);
+}
+
+function rowPassesJointResidueFilters(familyData, rowIndex) {
+  return rowPassesObservationFiltersWithSets(familyData, rowIndex, state.jointContexts, state.jointBackboneStates);
 }
 
 function initAccumulator(paramMeta, bins) {
@@ -1886,6 +1936,10 @@ function familyLevelOf(familyId) {
 }
 
 function compatibleFamilyIds(primaryFamilyId) {
+  if (state.jointJoinMode === "pair_residue") {
+    if (familyLevelOf(primaryFamilyId) !== "pair") return [];
+    return FAMILY_LEVEL_GROUPS.residue.filter((id) => state.manifest.families[id]);
+  }
   const level = familyLevelOf(primaryFamilyId);
   if (!level) return [];
   return FAMILY_LEVEL_GROUPS[level].filter((id) => state.manifest.families[id]);
@@ -1934,9 +1988,43 @@ function syncJointSelectors() {
       parameter2Select.value = state.parameter2Id;
     }
   }
+
+  if (state.jointJoinMode === "pair_residue") {
+    const validContextIds = new Set(jointResidueContextOptions().map((item) => item.id));
+    const validBackboneIds = new Set(jointResidueBackboneStateOptions().map((item) => item.id));
+    state.jointContexts = new Set([...state.jointContexts].filter((id) => validContextIds.has(id)));
+    state.jointBackboneStates = new Set([...state.jointBackboneStates].filter((id) => validBackboneIds.has(id)));
+    if (!state.jointContexts.size && validContextIds.size) {
+      state.jointContexts = new Set(validContextIds);
+    }
+    if (!state.jointBackboneStates.size && validBackboneIds.size) {
+      state.jointBackboneStates = new Set(validBackboneIds);
+    }
+  }
 }
 
 function bindJointControls() {
+  renderSingleChoiceGroup("jointJoinModeGroup", JOINT_JOIN_MODE_OPTIONS, state.jointJoinMode, (nextId) => {
+    state.jointJoinMode = nextId;
+    state.family2Id = null;
+    state.parameter2Id = null;
+    resetJointResidueFilters();
+    renderFilters();
+    renderJointPlot().catch(renderJointInteractionError);
+  });
+
+  const residueSideCluster = el("jointResidueSideCluster");
+  const residueContextCluster = el("jointResidueContextCluster");
+  const residueBackboneCluster = el("jointResidueBackboneCluster");
+  const showPairResidueControls = state.jointJoinMode === "pair_residue";
+  residueSideCluster.hidden = !showPairResidueControls;
+
+  renderSingleChoiceGroup("jointResidueSideGroup", JOINT_RESIDUE_SIDE_OPTIONS, state.jointResidueSide, (nextId) => {
+    state.jointResidueSide = nextId;
+    renderFilters();
+    renderJointPlot().catch(renderJointInteractionError);
+  });
+
   renderSingleChoiceGroup("jointColorScaleGroup", JOINT_COLOR_SCALE_OPTIONS, state.jointColorScale, (nextId) => {
     state.jointColorScale = nextId;
     renderFilters();
@@ -1948,11 +2036,40 @@ function bindJointControls() {
     renderJointPlot().catch(renderJointInteractionError);
   });
 
+  const jointContextOptions = jointResidueContextOptions();
+  residueContextCluster.hidden = !(showPairResidueControls && jointContextOptions.length);
+  el("jointResidueContextTitle").textContent = jointResidueContextLabel();
+  renderMultiChoiceGroup("jointResidueContextGroup", jointContextOptions, state.jointContexts, (contextId) => {
+    if (state.jointContexts.has(contextId) && state.jointContexts.size === 1) return;
+    if (state.jointContexts.has(contextId)) state.jointContexts.delete(contextId);
+    else state.jointContexts.add(contextId);
+    renderFilters();
+    renderJointPlot().catch(renderJointInteractionError);
+  });
+
+  const jointBackboneOptions = jointResidueBackboneStateOptions();
+  if (showPairResidueControls && jointBackboneOptions.length) {
+    residueBackboneCluster.hidden = false;
+    el("jointResidueBackboneTitle").textContent = jointResidueBackboneStateLabel();
+    renderMultiChoiceGroup("jointResidueBackboneGroup", jointBackboneOptions, state.jointBackboneStates, (stateId) => {
+      if (state.jointBackboneStates.has(stateId) && state.jointBackboneStates.size === 1) return;
+      if (state.jointBackboneStates.has(stateId)) state.jointBackboneStates.delete(stateId);
+      else state.jointBackboneStates.add(stateId);
+      renderFilters();
+      renderJointPlot().catch(renderJointInteractionError);
+    });
+  } else {
+    residueBackboneCluster.hidden = true;
+    el("jointResidueBackboneGroup").innerHTML = "";
+  }
+
   el("family2Select").onchange = (event) => {
     const value = event.target.value;
     state.family2Id = value || null;
     state.parameter2Id = null;
+    resetJointResidueFilters();
     syncJointSelectors();
+    renderFilters();
     renderJointPlot().catch(renderJointInteractionError);
   };
 
@@ -1962,7 +2079,74 @@ function bindJointControls() {
   };
 }
 
+function splitPairSiteLabel(label) {
+  const parts = String(label || "").split("--");
+  if (parts.length !== 2) return null;
+  return [parts[0], parts[1]];
+}
+
+function collectPairResidueJointPairs(pairFamilyData, pairParamId, residueFamilyData, residueParamId, allowedPidMask) {
+  const xs = [];
+  const ys = [];
+  const pdbSet = new Set();
+  const residueLookup = new Map();
+  const residueValues = residueFamilyData.values[residueParamId];
+
+  for (let rowIndex = 0; rowIndex < residueFamilyData.rowCount; rowIndex += 1) {
+    const pid = residueFamilyData.pid[rowIndex];
+    if (!allowedPidMask[pid]) continue;
+    if (!rowPassesJointResidueFilters(residueFamilyData, rowIndex)) continue;
+    const y = residueValues[rowIndex];
+    if (!Number.isFinite(y)) continue;
+    const label = residueFamilyData.siteLabel?.[rowIndex];
+    if (!label) continue;
+    residueLookup.set(`${pid}|${label}`, y);
+  }
+
+  const pairValues = pairFamilyData.values[pairParamId];
+  for (let rowIndex = 0; rowIndex < pairFamilyData.rowCount; rowIndex += 1) {
+    const pid = pairFamilyData.pid[rowIndex];
+    if (!allowedPidMask[pid]) continue;
+    if (!rowPassesObservationFilters(pairFamilyData, rowIndex)) continue;
+    const x = pairValues[rowIndex];
+    if (!Number.isFinite(x)) continue;
+    const pairLabel = pairFamilyData.siteLabel?.[rowIndex];
+    const sides = splitPairSiteLabel(pairLabel);
+    if (!sides) continue;
+    const [nt1Label, nt2Label] = sides;
+
+    if (state.jointResidueSide !== "nt2") {
+      const y = residueLookup.get(`${pid}|${nt1Label}`);
+      if (Number.isFinite(y)) {
+        xs.push(x);
+        ys.push(y);
+        pdbSet.add(pid);
+      }
+    }
+    if (state.jointResidueSide !== "nt1") {
+      const y = residueLookup.get(`${pid}|${nt2Label}`);
+      if (Number.isFinite(y)) {
+        xs.push(x);
+        ys.push(y);
+        pdbSet.add(pid);
+      }
+    }
+  }
+
+  return { xs, ys, n: xs.length, pdbCount: pdbSet.size };
+}
+
 function collectJointPairs(familyData1, paramId1, familyData2, paramId2, allowedPidMask) {
+  const mode = state.jointJoinMode;
+  if (
+    mode === "pair_residue"
+    && familyLevelOf(state.familyId) === "pair"
+    && familyLevelOf(state.family2Id) === "residue"
+    && familyData1 !== familyData2
+  ) {
+    return collectPairResidueJointPairs(familyData1, paramId1, familyData2, paramId2, allowedPidMask);
+  }
+
   const sameFamilyData = familyData1 === familyData2;
   const xs = [];
   const ys = [];
@@ -2000,6 +2184,7 @@ function collectJointPairs(familyData1, paramId1, familyData2, paramId2, allowed
     for (let rowIndex = 0; rowIndex < familyData2.rowCount; rowIndex += 1) {
       const pid = familyData2.pid[rowIndex];
       if (!allowedPidMask[pid]) continue;
+      if (!rowPassesObservationFilters(familyData2, rowIndex)) continue;
       const y = vals2[rowIndex];
       if (!Number.isFinite(y)) continue;
       const label = familyData2.siteLabel ? familyData2.siteLabel[rowIndex] : String(rowIndex - familyData2.pidStart[pid]);
@@ -2264,7 +2449,12 @@ async function renderJointPlot() {
   if (!state.family2Id || !state.parameter2Id) {
     const plotNode = el("jointPlot");
     if (plotNode.data) Plotly.purge(plotNode);
-    plotNode.innerHTML = `<div class="empty-state">Select a second parameter above to generate a joint distribution.</div>`;
+    const message = state.jointJoinMode === "pair_residue"
+      ? (familyLevelOf(state.familyId) === "pair"
+          ? "Select a residue-family second parameter above to generate a pair-to-residue joint distribution."
+          : "Pair -> Residue mode requires a pair-level primary family such as Base Pair or Pair Quality.")
+      : "Select a second parameter above to generate a joint distribution.";
+    plotNode.innerHTML = `<div class="empty-state">${message}</div>`;
     el("jointStats").hidden = true;
     return;
   }

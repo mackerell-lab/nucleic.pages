@@ -52,6 +52,13 @@ const JOINT_RESIDUE_SIDE_OPTIONS = [
   { id: "nt2", label: "nt2 only" },
 ];
 
+const JOINT_PLOT_TYPE_OPTIONS = [
+  { id: "heatmap", label: "Heatmap" },
+  { id: "contour", label: "Contour" },
+  { id: "filled_contour", label: "Filled contour" },
+  { id: "heatmap_contour", label: "Heatmap + Contour" },
+];
+
 const MD_BDNA_46 = new Set([
   "109d","126d","127d","158d","196d","1bna","1d23","1d43","1d44","1d45",
   "1d46","1d56","1d63","1dcv","1dou","1fq2","1jgr","1m6f","1s2r","2b0k",
@@ -97,6 +104,7 @@ const state = {
   jointResidueSide: "both",
   jointContexts: new Set(),
   jointBackboneStates: new Set(),
+  jointPlotType: "heatmap",
   jointColorScale: "log",
   jointPalette: "warm",
 };
@@ -2025,6 +2033,12 @@ function bindJointControls() {
     renderJointPlot().catch(renderJointInteractionError);
   });
 
+  renderSingleChoiceGroup("jointPlotTypeGroup", JOINT_PLOT_TYPE_OPTIONS, state.jointPlotType, (nextId) => {
+    state.jointPlotType = nextId;
+    renderFilters();
+    renderJointPlot().catch(renderJointInteractionError);
+  });
+
   renderSingleChoiceGroup("jointColorScaleGroup", JOINT_COLOR_SCALE_OPTIONS, state.jointColorScale, (nextId) => {
     state.jointColorScale = nextId;
     renderFilters();
@@ -2432,6 +2446,88 @@ function jointIntensityLabel() {
   return state.displayScale === "density" ? "Density (smoothed)" : "Probability (smoothed)";
 }
 
+function buildJointPlotTraces(zData, xCenters, yCenters, customData, hoverTemplate, maxIntensity, logFloor, intensityLabel) {
+  const colorscale = JOINT_PALETTE_MAP[state.jointPalette] ?? "YlOrRd";
+  const zmin = state.jointColorScale === "linear" ? 0 : Math.log10(logFloor);
+  const zmax = state.jointColorScale === "linear"
+    ? (maxIntensity > 0 ? maxIntensity : undefined)
+    : (maxIntensity > 0 ? Math.log10(Math.max(maxIntensity, logFloor)) : undefined);
+  const colorbar = {
+    title: {
+      text: state.jointColorScale === "log" ? `log₁₀ ${intensityLabel}` : intensityLabel,
+      side: "right",
+    },
+    thickness: 14,
+    len: 0.9,
+  };
+  const contourStep = Number.isFinite(zmin) && Number.isFinite(zmax) && zmax > zmin
+    ? (zmax - zmin) / 10
+    : undefined;
+  const heatmapTrace = {
+    x: xCenters,
+    y: yCenters,
+    z: zData,
+    customdata: customData,
+    type: "heatmap",
+    colorscale,
+    zsmooth: false,
+    hovertemplate: hoverTemplate,
+    colorbar,
+    zmin,
+    zmax,
+  };
+  const contourTrace = {
+    x: xCenters,
+    y: yCenters,
+    z: zData,
+    customdata: customData,
+    type: "contour",
+    autocontour: true,
+    zmin,
+    zmax,
+    hovertemplate: hoverTemplate,
+    contours: {
+      start: zmin,
+      end: zmax,
+      size: contourStep,
+      showlabels: false,
+    },
+  };
+
+  switch (state.jointPlotType) {
+    case "contour":
+      return [{
+        ...contourTrace,
+        contours: { ...contourTrace.contours, coloring: "none" },
+        line: { color: "#182233", width: 1.1 },
+        showscale: false,
+      }];
+    case "filled_contour":
+      return [{
+        ...contourTrace,
+        colorscale,
+        colorbar,
+        contours: { ...contourTrace.contours, coloring: "heatmap" },
+        line: { color: "rgba(24,34,51,0.28)", width: 0.6 },
+      }];
+    case "heatmap_contour":
+      return [
+        heatmapTrace,
+        {
+          ...contourTrace,
+          contours: { ...contourTrace.contours, coloring: "none" },
+          line: { color: "#182233", width: 1.0 },
+          showscale: false,
+          hoverinfo: "skip",
+          opacity: 0.92,
+        },
+      ];
+    case "heatmap":
+    default:
+      return [heatmapTrace];
+  }
+}
+
 function jointAxisHoverValues(centers, paramMeta, axisSpec) {
   if (!paramMeta.isCircular) {
     return {
@@ -2575,31 +2671,16 @@ async function renderJointPlot() {
     : `${yMeta.display_name}: %{customdata[2]:.2f}`;
   const hoverTemplate = `${xHoverLine}<br>${yHoverLine}<br>${intensityLabel}: %{customdata[4]:.4g}<extra></extra>`;
 
-  const trace = {
-    x: xCenters,
-    y: yCenters,
-    z: zData,
-    customdata: customData,
-    type: "heatmap",
-    colorscale: JOINT_PALETTE_MAP[state.jointPalette] ?? "YlOrRd",
-    zsmooth: false,
-    hovertemplate: hoverTemplate,
-    colorbar: {
-      title: {
-        text: state.jointColorScale === "log" ? `log₁₀ ${intensityLabel}` : intensityLabel,
-        side: "right",
-      },
-      thickness: 14,
-      len: 0.9,
-    },
-  };
-  if (state.jointColorScale === "linear") {
-    trace.zmin = 0;
-    trace.zmax = maxIntensity > 0 ? maxIntensity : undefined;
-  } else if (maxIntensity > 0) {
-    trace.zmin = Math.log10(logFloor);
-    trace.zmax = Math.log10(Math.max(maxIntensity, logFloor));
-  }
+  const traces = buildJointPlotTraces(
+    zData,
+    xCenters,
+    yCenters,
+    customData,
+    hoverTemplate,
+    maxIntensity,
+    logFloor,
+    intensityLabel
+  );
 
   const layout = {
     margin: { l: 64, r: 22, t: 28, b: 72, pad: 4 },
@@ -2620,9 +2701,9 @@ async function renderJointPlot() {
   if (!canReact) plotNode.innerHTML = "";
   const config = { responsive: true, displayModeBar: false };
   if (canReact) {
-    await Plotly.react("jointPlot", [trace], layout, config);
+    await Plotly.react("jointPlot", traces, layout, config);
   } else {
-    await Plotly.newPlot("jointPlot", [trace], layout, config);
+    await Plotly.newPlot("jointPlot", traces, layout, config);
   }
 
   const corr = computeCorrelation(xAxisSpec.values, yAxisSpec.values);

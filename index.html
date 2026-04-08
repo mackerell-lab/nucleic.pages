@@ -326,7 +326,7 @@
         <div class="panel-head">
           <h2>2D Joint Analysis</h2>
           <p>
-            Select a second parameter to generate a joint distribution heatmap.
+            Select a second parameter to generate a joint distribution plot.
             Same-level pairing remains available, and pair-level parameters can also be expanded onto residue-level measurements for base-pair versus local torsion/pucker analysis.
           </p>
         </div>
@@ -376,6 +376,16 @@
         <div class="joint-controls">
           <div class="filter-cluster">
             <span class="cluster-title label-with-help">
+              <span>Plot Type</span>
+              <span class="help-wrap">
+                <button type="button" class="help-badge" aria-label="Explain Plot Type">?</button>
+                <span class="help-tooltip">Heatmap keeps the current default behavior. Contour shows isolines only. Filled contour shows smoothed contour bands. Heatmap + contour overlays contour lines on the same current bins, smoothing, and normalization.</span>
+              </span>
+            </span>
+            <div id="jointPlotTypeGroup" class="toggle-group"></div>
+          </div>
+          <div class="filter-cluster">
+            <span class="cluster-title label-with-help">
               <span>Color Scale</span>
               <span class="help-wrap">
                 <button type="button" class="help-badge" aria-label="Explain Color Scale">?</button>
@@ -389,7 +399,7 @@
               <span>Color Palette</span>
               <span class="help-wrap">
                 <button type="button" class="help-badge" aria-label="Explain Color Palette">?</button>
-                <span class="help-tooltip">Only changes the heatmap colors. It does not change filtering, binning, smoothing, or normalization. Hotspots matches the older CMAP-style report heatmaps in this project.</span>
+                <span class="help-tooltip">Only changes the 2D plot colors. It does not change filtering, binning, smoothing, or normalization. Hotspots matches the older CMAP-style report heatmaps in this project.</span>
               </span>
             </span>
             <div id="jointPaletteGroup" class="toggle-group"></div>
@@ -397,7 +407,7 @@
         </div>
 
         <div id="jointPlot" class="plot-panel joint-plot-panel">
-          <div class="empty-state">Select a second parameter above to generate a joint distribution.</div>
+          <div class="empty-state">Select a second parameter above to generate a joint distribution plot.</div>
         </div>
 
         <div class="stats-strip" id="jointStats" hidden>

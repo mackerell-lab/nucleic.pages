@@ -2478,12 +2478,44 @@ function currentJointContourCount() {
   return JOINT_CONTOUR_WIDTH_OPTIONS.find((item) => item.id === state.jointContourWidth)?.ncontours ?? 10;
 }
 
+function buildJointContourConfig(zmin, zmax) {
+  const ncontours = currentJointContourCount();
+  const base = {
+    showlabels: state.jointContourLabels === "on",
+  };
+  if (!Number.isFinite(zmin) || !Number.isFinite(zmax) || zmax <= zmin) {
+    return {
+      autocontour: true,
+      ncontours,
+      contours: base,
+    };
+  }
+  const size = (zmax - zmin) / ncontours;
+  if (!(size > 0)) {
+    return {
+      autocontour: true,
+      ncontours,
+      contours: base,
+    };
+  }
+  return {
+    autocontour: false,
+    contours: {
+      ...base,
+      start: zmin,
+      end: zmax,
+      size,
+    },
+  };
+}
+
 function buildJointPlotTraces(zData, xCenters, yCenters, customData, hoverTemplate, maxIntensity, logFloor, intensityLabel) {
   const colorscale = JOINT_PALETTE_MAP[state.jointPalette] ?? "YlOrRd";
   const zmin = state.jointColorScale === "linear" ? 0 : Math.log10(logFloor);
   const zmax = state.jointColorScale === "linear"
     ? (maxIntensity > 0 ? maxIntensity : undefined)
     : (maxIntensity > 0 ? Math.log10(Math.max(maxIntensity, logFloor)) : undefined);
+  const contourConfig = buildJointContourConfig(zmin, zmax);
   const colorbar = {
     title: {
       text: state.jointColorScale === "log" ? `log₁₀ ${intensityLabel}` : intensityLabel,
@@ -2511,14 +2543,12 @@ function buildJointPlotTraces(zData, xCenters, yCenters, customData, hoverTempla
     z: zData,
     customdata: customData,
     type: "contour",
-    autocontour: true,
-    ncontours: currentJointContourCount(),
+    autocontour: contourConfig.autocontour,
+    ncontours: contourConfig.ncontours,
     zmin,
     zmax,
     hovertemplate: hoverTemplate,
-    contours: {
-      showlabels: state.jointContourLabels === "on",
-    },
+    contours: contourConfig.contours,
   };
 
   switch (state.jointPlotType) {

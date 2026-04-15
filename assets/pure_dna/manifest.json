@@ -1,7 +1,7 @@
 {
   "version": "pure_dna",
   "display_name": "Pure DNA Explorer",
-  "generated_at": "2026-04-03T08:00:44.590Z",
+  "generated_at": "2026-04-15T18:26:28.894Z",
   "universe": {
     "pdb_entries": 1830,
     "forms": {
@@ -29,22 +29,19 @@
     }
   },
   "defaults": {
-    "cleanliness": "relaxed",
+    "cleanliness": "conservative",
     "duplex_gate": "any",
     "methods": [
-      "xray"
+      "xray",
+      "nmr"
     ],
-    "resolution": "le_3_0",
+    "resolution": "any",
     "forms": [
-      "bdna"
+      "adna",
+      "bdna",
+      "zdna"
     ],
-    "contexts": [
-      "A-T",
-      "C-G",
-      "G-C",
-      "T-A"
-    ],
-    "terminal_policy": "exclude",
+    "terminal_policy": "include",
     "family_id": "base_pair",
     "parameter_id": "shear"
   },
@@ -393,14 +390,64 @@
         }
       ]
     },
-    "custom_angles": {
-      "family_id": "custom_angles",
-      "display_name": "Custom Angles",
-      "file": "./custom_angles.tsv.gz",
+    "glycosidic_sugar_angles": {
+      "family_id": "glycosidic_sugar_angles",
+      "display_name": "Glycosidic Sugar-side",
+      "file": "./glycosidic_sugar_angles.tsv.gz",
       "row_count": 53853,
       "param_ids": [
         "o4_c1_n",
         "c2_c1_n"
+      ],
+      "context_column": "base",
+      "context_label": "Base Type",
+      "context_options": [
+        {
+          "id": "A",
+          "label": "A"
+        },
+        {
+          "id": "C",
+          "label": "C"
+        },
+        {
+          "id": "G",
+          "label": "G"
+        },
+        {
+          "id": "T",
+          "label": "T"
+        }
+      ],
+      "secondary_context_column": "bi_bii",
+      "secondary_context_label": "Backbone State",
+      "secondary_context_options": [
+        {
+          "id": "BI",
+          "label": "BI"
+        },
+        {
+          "id": "BII",
+          "label": "BII"
+        },
+        {
+          "id": "BIII",
+          "label": "BIII"
+        },
+        {
+          "id": "Missing",
+          "label": "Missing"
+        }
+      ]
+    },
+    "glycosidic_base_angles": {
+      "family_id": "glycosidic_base_angles",
+      "display_name": "Glycosidic Base-side",
+      "file": "./glycosidic_base_angles.tsv.gz",
+      "row_count": 53853,
+      "param_ids": [
+        "c1_n_c4_c2",
+        "c1_n_c8_c6"
       ],
       "context_column": "base",
       "context_label": "Base Type",
@@ -1352,7 +1399,7 @@
     },
     {
       "param_id": "o4_c1_n",
-      "family_id": "custom_angles",
+      "family_id": "glycosidic_sugar_angles",
       "display_name": "O4'-C1'-N9/N1",
       "unit": "deg",
       "value_type": "numeric_linear",
@@ -1363,8 +1410,30 @@
     },
     {
       "param_id": "c2_c1_n",
-      "family_id": "custom_angles",
+      "family_id": "glycosidic_sugar_angles",
       "display_name": "C2'-C1'-N9/N1",
+      "unit": "deg",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        100,
+        160
+      ]
+    },
+    {
+      "param_id": "c1_n_c4_c2",
+      "family_id": "glycosidic_base_angles",
+      "display_name": "C1'-N9/N1-C4/C2",
+      "unit": "deg",
+      "value_type": "numeric_linear",
+      "display_range_default": [
+        100,
+        160
+      ]
+    },
+    {
+      "param_id": "c1_n_c8_c6",
+      "family_id": "glycosidic_base_angles",
+      "display_name": "C1'-N9/N1-C8/C6",
       "unit": "deg",
       "value_type": "numeric_linear",
       "display_range_default": [

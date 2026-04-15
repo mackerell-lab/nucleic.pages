@@ -1975,7 +1975,14 @@ const JOINT_PALETTE_MAP = {
 };
 
 const FAMILY_LEVEL_GROUPS = {
-  residue: ["backbone", "pseudo_torsion", "sugar_torsion", "pucker", "custom_angles"],
+  residue: [
+    "backbone",
+    "pseudo_torsion",
+    "sugar_torsion",
+    "pucker",
+    "glycosidic_sugar_angles",
+    "glycosidic_base_angles",
+  ],
   pair: ["base_pair", "pair_quality"],
   step: ["step", "helical", "step_position", "same_strand", "helix_radius"],
 };

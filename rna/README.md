@@ -4,6 +4,28 @@ An additive RNA application at `rna/index.html`, using the existing website's
 stylesheet and Plotly conventions. The DNA application and assets do not import
 any of these modules. All RNA scientific and browser source is versioned here.
 
+## Use the initial release
+
+The checked-in `full_20260916` release contains 1,514 canonical RNA entries,
+242,078 residues, 107,984 pairs and 53,137 steps. It passed serialized release
+validation and 36 complete-data browser checks. Open `/nucleic.pages/rna/` when
+serving the parent workspace, or `/rna/` when serving this repository directly.
+
+From the parent workspace:
+
+```sh
+python3 -m http.server 8767 --bind 127.0.0.1 --directory /home/zhaomt/cmap/test15
+```
+
+Open <http://127.0.0.1:8767/nucleic.pages/rna/>. Start with the default filtered
+view, select a family/parameter, and use the CSV/provenance buttons to retain the
+exact plotted observations. Survey and aligned coordinates load when requested.
+
+This initial release has about 529 MiB of compressed assets, loaded on demand.
+All-method, all-component 2D analysis is memory intensive (about 2 GB in the local
+acceptance run); packaging and browser-memory optimization remain follow-up work.
+No GitHub Pages deployment is implied by a local build or commit.
+
 ## Build locally
 
 From the website repository, create or check the isolated RNA environment:

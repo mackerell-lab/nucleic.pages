@@ -1,0 +1,7 @@
+{
+  "schema_version": "rna-explorer-1",
+  "molecule_type": "RNA",
+  "build_id": "full_20260916",
+  "manifest": "releases/full_20260916/manifest.json",
+  "partial": false
+}

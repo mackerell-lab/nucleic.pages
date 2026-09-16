@@ -5,7 +5,7 @@ import {gzipSync, gunzipSync} from 'node:zlib';
 import {RESIDUE_PARAMETERS} from './parameter_registry.mjs';
 import {TERM_REGISTRY,publicBaseGeometryConfig} from './survey_terms.mjs';
 import {readJson, sha256} from './output_scope.mjs';
-import {encodeCoordinateRows, encodeSurveyRows, decodeCoordinateRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
+import {encodeCoordinateRows, encodeFamilyRows, encodeSurveyRows, decodeCoordinateRows, decodeFamilyRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',sugar_torsion:'Sugar Torsions',
@@ -87,6 +87,9 @@ class Partitions {
       } else if (this.columnar && key.startsWith('survey/coordinates/')) {
         payload = Buffer.from(JSON.stringify(encodeCoordinateRows(JSON.parse(raw), this.buildId)));
         encoding = COORDINATE_COLUMNAR_ENCODING;
+      } else if (this.columnar && key.startsWith('families/')) {
+        payload = Buffer.from(JSON.stringify(encodeFamilyRows(JSON.parse(raw), this.buildId)));
+        encoding = FAMILY_COLUMNAR_ENCODING;
       }
       const compressed = gzipSync(payload, {level:9});
       const relative = `${key}.json.gz`, output = await this.scope.write(path.join(releaseRoot, relative), compressed);
@@ -236,6 +239,7 @@ export async function validateRelease(manifestPath) {
     const data = JSON.parse((descriptor.path.endsWith('.gz') ? gunzipSync(bytes) : bytes).toString());
     if (descriptor.encoding === SURVEY_COLUMNAR_ENCODING) return decodeSurveyRows(data);
     if (descriptor.encoding === COORDINATE_COLUMNAR_ENCODING) return decodeCoordinateRows(data);
+    if (descriptor.encoding === FAMILY_COLUMNAR_ENCODING) return decodeFamilyRows(data);
     return data;
   };
   const metadata = await load(manifest.metadata), entryIds = new Set(metadata.entries.map(row => row.pdb_id));

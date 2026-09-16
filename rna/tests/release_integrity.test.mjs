@@ -9,7 +9,7 @@ import {OutputScope,sha256,readJson} from '../offline/output_scope.mjs';
 import {computeResidueObservables} from '../offline/residue_geometry.mjs';
 import {computeGeometry,geometryFamilies} from '../offline/geometry_adapter.mjs';
 import {computeSurvey} from '../offline/survey.mjs';
-import {decodeCoordinateRows, decodeSurveyRows, encodeCoordinateRows, encodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
+import {decodeCoordinateRows, decodeFamilyRows, decodeSurveyRows, encodeCoordinateRows, encodeFamilyRows, encodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
 
 test('real RNA numerical output retains release identities and rejects rehashed scientific corruption',async t=>{
   const reference=await readJson(new URL('./reference/rna_x3dna_reference.json',import.meta.url));
@@ -42,7 +42,7 @@ test('real RNA numerical output retains release identities and rejects rehashed 
   await buildAssets({build,buildDir,scope,assetsRoot});
   const root=path.join(assetsRoot,'releases',build.build_id),manifestPath=path.join(root,'manifest.json');
   const manifest=await readJson(manifestPath);
-  const load=async descriptor=>{const data=JSON.parse(gunzipSync(await fs.readFile(path.join(root,descriptor.path)))); return descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(data) : descriptor.encoding===COORDINATE_COLUMNAR_ENCODING ? decodeCoordinateRows(data) : data;};
+  const load=async descriptor=>{const data=JSON.parse(gunzipSync(await fs.readFile(path.join(root,descriptor.path)))); return descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(data) : descriptor.encoding===COORDINATE_COLUMNAR_ENCODING ? decodeCoordinateRows(data) : descriptor.encoding===FAMILY_COLUMNAR_ENCODING ? decodeFamilyRows(data) : data;};
   const valid=await validateRelease(manifestPath);
   assert.equal(valid.ok,true,JSON.stringify(valid.errors));
   assert.equal(manifest.coordinate_policy.model_id,undefined);
@@ -110,9 +110,9 @@ test('real RNA numerical output retains release identities and rejects rehashed 
   for(const [name,descriptor,mutate,pattern] of cases) await t.test(name,async()=>{
     const file=path.join(root,descriptor.path),original=await fs.readFile(file),hash=descriptor.sha256;
     const packed=JSON.parse(gunzipSync(original));
-    const rows=descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(packed) : descriptor.encoding===COORDINATE_COLUMNAR_ENCODING ? decodeCoordinateRows(packed) : packed;
+    const rows=descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(packed) : descriptor.encoding===COORDINATE_COLUMNAR_ENCODING ? decodeCoordinateRows(packed) : descriptor.encoding===FAMILY_COLUMNAR_ENCODING ? decodeFamilyRows(packed) : packed;
     mutate(rows);
-    const changed=gzipSync(Buffer.from(JSON.stringify(descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? encodeSurveyRows(rows, manifest.build_id) : descriptor.encoding===COORDINATE_COLUMNAR_ENCODING ? encodeCoordinateRows(rows, manifest.build_id) : rows)));
+    const changed=gzipSync(Buffer.from(JSON.stringify(descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? encodeSurveyRows(rows, manifest.build_id) : descriptor.encoding===COORDINATE_COLUMNAR_ENCODING ? encodeCoordinateRows(rows, manifest.build_id) : descriptor.encoding===FAMILY_COLUMNAR_ENCODING ? encodeFamilyRows(rows, manifest.build_id) : rows)));
     await fs.writeFile(file,changed);descriptor.sha256=sha256(changed);
     await fs.writeFile(manifestPath,JSON.stringify(manifest));
     const result=await validateRelease(manifestPath);

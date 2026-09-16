@@ -6,7 +6,7 @@ any of these modules. All RNA scientific and browser source is versioned here.
 
 ## Use the initial release
 
-The checked-in `full_columnar_coord_20260916` release contains 1,514 canonical RNA entries,
+The checked-in `full_columnar_family_20260916` release contains 1,514 canonical RNA entries,
 242,078 residues, 107,984 pairs and 53,137 steps. It passed serialized release
 validation and 36 complete-data browser checks. Open `/nucleic.pages/rna/` when
 serving the parent workspace, or `/rna/` when serving this repository directly.
@@ -21,9 +21,9 @@ Open <http://127.0.0.1:8767/nucleic.pages/rna/>. Start with the default filtered
 view, select a family/parameter, and use the CSV/provenance buttons to retain the
 exact plotted observations. Survey and aligned coordinates load when requested.
 
-This release has about 445 MiB of compressed assets, loaded on demand. Survey scalar partitions use lossless
+This release has about 424 MiB of compressed assets, loaded on demand. Survey scalar partitions use lossless
 `rna-survey-columnar-1` transport and coordinate partitions use lossless
-`rna-coordinate-columnar-1` transport; both decode to the same row identities,
+`rna-coordinate-columnar-1` transport, and family rows use `rna-family-columnar-1`; all decode to the same row identities,
 values, statuses and coordinate fields as the original release.
 The latest local all-method, all-component chi/delta probe retained all 241,439
 finite identity matches and reported about 0.89 GB JavaScript heap and 8.2 seconds

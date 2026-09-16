@@ -1,4 +1,4 @@
-import { decodeCoordinateRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from './survey-codec.js';
+import { decodeCoordinateRows, decodeFamilyRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from './survey-codec.js';
 
 /** A session pins one immutable RNA release; rejected requests can be retried. */
 const immutableData = new WeakSet();
@@ -107,7 +107,7 @@ export class RnaDataRepository {
       const data = await this.readJson(new URL(path, this.releaseUrl).href);
       if (data.build_id && data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA asset: ${key}`);
       if (key.startsWith('family:')) {
-        const rows = Array.isArray(data) ? data : data.rows;
+        const rows = data.encoding === FAMILY_COLUMNAR_ENCODING ? decodeFamilyRows(data) : (Array.isArray(data) ? data : data.rows);
         if (!Array.isArray(rows)) throw new Error(`RNA family requires rows: ${key}`);
         const ids = new Set();
         for (const row of rows) {

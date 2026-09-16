@@ -1,6 +1,51 @@
 /** Lossless columnar transport for large Survey scalar partitions. */
 export const SURVEY_COLUMNAR_ENCODING = 'rna-survey-columnar-1';
 export const COORDINATE_COLUMNAR_ENCODING = 'rna-coordinate-columnar-1';
+export const FAMILY_COLUMNAR_ENCODING = 'rna-family-columnar-1';
+
+function encodeDictionaryColumns(rows, encoding, buildId = null) {
+  if (!Array.isArray(rows)) throw new TypeError('RNA rows must be an array');
+  const keys = [...new Set(rows.flatMap(row => Object.keys(row)))].sort();
+  const columns = {}, missing = {};
+  for (const key of keys) {
+    const values = rows.map(row => row[key] ?? null);
+    const absent = rows.flatMap((row, index) => Object.hasOwn(row, key) ? [] : [index]);
+    if (absent.length) missing[key] = absent;
+    const dictionary = [], indices = [], lookup = new Map();
+    for (const value of values) {
+      const identity = JSON.stringify(value);
+      let index = lookup.get(identity);
+      if (index === undefined) { index = dictionary.length; lookup.set(identity, index); dictionary.push(value); }
+      indices.push(index);
+    }
+    const encoded = { dictionary, indices };
+    columns[key] = JSON.stringify(encoded).length < JSON.stringify(values).length ? encoded : values;
+  }
+  return { encoding, ...(buildId ? { build_id: buildId } : {}), row_count: rows.length, columns,
+    ...(Object.keys(missing).length ? { missing } : {}) };
+}
+
+function decodeDictionaryColumns(data, encoding, label) {
+  if (!data || data.encoding !== encoding || !data.columns) throw new Error(`Unsupported RNA ${label} encoding`);
+  const keys = Object.keys(data.columns), count = data.row_count;
+  if (!Number.isSafeInteger(count) || count < 0) throw new Error(`Invalid RNA ${label} row count`);
+  const rows = Array.from({ length: count }, () => ({}));
+  for (const key of keys) {
+    const column = data.columns[key];
+    if (Array.isArray(column)) {
+      if (column.length !== count) throw new Error(`${label} column length mismatch`);
+      for (let index = 0; index < count; index++) rows[index][key] = column[index];
+    } else if (column && Array.isArray(column.dictionary) && Array.isArray(column.indices)) {
+      if (column.indices.length !== count || column.indices.some(index => !Number.isSafeInteger(index) || index < 0 || index >= column.dictionary.length)) throw new Error(`${label} dictionary column mismatch`);
+      for (let index = 0; index < count; index++) rows[index][key] = column.dictionary[column.indices[index]];
+    } else throw new Error(`${label} column is invalid`);
+  }
+  for (const [key, indices] of Object.entries(data.missing ?? {})) {
+    if (!Object.hasOwn(data.columns, key) || !Array.isArray(indices) || indices.some(index => !Number.isSafeInteger(index) || index < 0 || index >= count)) throw new Error(`Invalid ${label} missing-field index`);
+    for (const index of indices) delete rows[index][key];
+  }
+  return rows;
+}
 
 export function encodeSurveyRows(rows, buildId = null) {
   if (!Array.isArray(rows)) throw new TypeError('Survey rows must be an array');
@@ -40,3 +85,6 @@ export function decodeCoordinateRows(data) {
   }
   return rows;
 }
+
+export function encodeFamilyRows(rows, buildId = null) { return encodeDictionaryColumns(rows, FAMILY_COLUMNAR_ENCODING, buildId); }
+export function decodeFamilyRows(data) { return decodeDictionaryColumns(data, FAMILY_COLUMNAR_ENCODING, 'family'); }

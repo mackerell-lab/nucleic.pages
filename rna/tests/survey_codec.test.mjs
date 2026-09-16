@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeCoordinateRows, decodeSurveyRows, encodeCoordinateRows, encodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from '../core/survey-codec.js';
+import { decodeCoordinateRows, decodeFamilyRows, decodeSurveyRows, encodeCoordinateRows, encodeFamilyRows, encodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from '../core/survey-codec.js';
 
 test('Columnar Survey encoding round-trips raw identities, nulls and nested values', () => {
   const rows = [
@@ -27,4 +27,12 @@ test('Columnar coordinate encoding round-trips geometry rows and rejects bad col
   assert.throws(() => decodeCoordinateRows({ encoding: COORDINATE_COLUMNAR_ENCODING, row_count: 2, columns: { id: ['a'] } }), /column length/);
   assert.throws(() => decodeCoordinateRows({ ...encoded, row_count: -1 }), /row count/);
   assert.throws(() => decodeCoordinateRows({ ...encoded, missing: { id: [2] } }), /missing-field/);
+});
+
+test('Dictionary family encoding preserves nulls, absent fields and numeric values', () => {
+  const rows = [{ id: 'r1', base: 'U', value: 1.25 }, { id: 'r2', base: 'U', value: null, optional: false }];
+  const encoded = encodeFamilyRows(rows, 'full_test');
+  assert.equal(encoded.encoding, FAMILY_COLUMNAR_ENCODING);
+  assert.deepEqual(decodeFamilyRows(JSON.parse(JSON.stringify(encoded))), rows);
+  assert.throws(() => decodeFamilyRows({ ...encoded, columns: { id: { dictionary: ['r1'], indices: [1, 0] } } }), /dictionary/);
 });

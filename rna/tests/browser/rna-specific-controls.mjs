@@ -1,6 +1,35 @@
 import assert from 'node:assert/strict';
 import { waitReady } from './helpers.mjs';
 
+export async function checkBroadResidueScope(page, record) {
+  const started = Date.now();
+  const evidence = await page.evaluate(async () => {
+    const app = window.rnaExplorer, saved = structuredClone(app.state);
+    app.state.familyId = 'backbone'; app.state.parameterId = 'chi';
+    app.state.family2Id = 'backbone'; app.state.parameter2Id = 'delta'; app.state.joint.mode = 'identity';
+    app.state.selection = { components: 'all', methods: [], resolutionMax: null, contexts: [], functions: [], subtypes: [], structures: [], includeEnds: true, puckerStates: [], pairPolicy: 'exact', interactionFamilies: [], stemOnly: false };
+    app.updateSelectors();
+    const renderingStarted = performance.now();
+    await app.requestRender();
+    const renderMs = performance.now() - renderingStarted;
+    if (document.querySelector('#appStatus').dataset.state !== 'ready') throw new Error(document.querySelector('#appStatus').textContent);
+    const rows = (await app.repository.loadFamily('backbone')).rows;
+    const finite = (row, parameter) => Number.isFinite(row.values?.[parameter]) && (!row.statuses?.[parameter] || ['available', 'computed', 'ok', 'valid'].includes(row.statuses[parameter]));
+    let expectedChi = 0, expectedJoint = 0;
+    for (const row of rows) { const chi = finite(row, 'chi'); if (chi) expectedChi++; if (chi && finite(row, 'delta')) expectedJoint++; }
+    const result = { loadedRows: rows.length, expectedChi, actualChi: app.snapshots.distribution.result.coverage.plottedRows,
+      expectedJoint, actualJoint: app.snapshots.joint.result.points.length, renderMs,
+      heapUsedBytes: performance.memory?.usedJSHeapSize ?? null, semantics: 'All released entries, all methods and component profiles; no CSV duplication for this broad probe.' };
+    app.state = saved; app.updateSelectors(); await app.requestRender();
+    return result;
+  });
+  await waitReady(page);
+  assert.equal(evidence.actualChi, evidence.expectedChi, 'Broad chi view lost finite observations');
+  assert.equal(evidence.actualJoint, evidence.expectedJoint, 'Broad same-residue joint lost finite identity matches');
+  assert(evidence.actualJoint > 0);
+  record('Broad all-method residue and joint scope', { ...evidence, probeAndRestoreMs: Date.now() - started });
+}
+
 export async function checkPairControls(page, record) {
   const saved = await page.evaluate(() => structuredClone(window.rnaExplorer.state));
   await page.evaluate(async () => {
@@ -18,7 +47,8 @@ export async function checkPairControls(page, record) {
       const label = String(row.family || row.interaction_family || '');
       const near = row.near === true || /^n[ct]/i.test(label);
       const alternative = row.alternative === true || /^[n]?[ct][WHS]{2}a$/i.test(label);
-      return Number.isFinite(row.values.opening) && (policy === 'all' || policy === 'near' ? policy !== 'near' || near : !near && !alternative)
+      return Number.isFinite(row.values.opening) && (!row.statuses?.opening || ['available', 'computed', 'ok', 'valid'].includes(row.statuses.opening))
+        && (policy === 'all' || policy === 'near' ? policy !== 'near' || near : !near && !alternative)
         && (!stemOnly || row.stem_eligible === true) && (!family || label === family);
     });
     return { expected: rows.map(row => row.id).sort(), actual: [...new Set(app.snapshots.distribution.result.series.flatMap(series => series.rowIds))].sort() };
@@ -29,6 +59,7 @@ export async function checkPairControls(page, record) {
     const values = await expectedAndActual(policy); assert.deepEqual(values.actual, values.expected, `${policy} pair policy disagrees with raw flags`);
     counts[policy] = values.actual.length;
   }
+  if (!await page.evaluate(() => window.rnaExplorer.manifest.partial)) assert(counts.near > 0, 'Full-release near-assignment branch has no positive observations');
   await page.click('#pairPolicyGroup button[data-value="all"]'); await waitReady(page);
   await page.click('#stemScopeGroup button[data-value="stem"]'); await waitReady(page);
   let values = await expectedAndActual('all', true); assert.deepEqual(values.actual, values.expected);
@@ -52,6 +83,7 @@ export async function checkPairControls(page, record) {
   const endpoints = await page.evaluate(() => window.rnaExplorer.snapshots.joint.result.points.map(point => ({
     pairTerminal: point.left.is_terminal_any, residueTerminal: point.right.is_terminal_any, pairId: point.pair_id, residueId: point.residue_id,
   })));
+  assert(endpoints.length > 0, 'Terminal-exclusion test did not exercise any endpoint observations');
   assert(endpoints.every(point => point.pairTerminal !== true && point.residueTerminal !== true), 'Terminal pair or residue survived endpoint exclusion');
   record('Terminal exclusion applies to endpoint joins', { incidences: endpoints.length });
   await page.click('#terminalGroup button[data-value="include"]'); await waitReady(page);

@@ -31,3 +31,8 @@ Partial releases are rejected by default. Set `RNA_ALLOW_PARTIAL=1` only for
 explicitly labeled integration diagnostics; those results do not validate the
 complete PDB-derived release. The report records the actual build identifier,
 release counts, and partial flag.
+
+The live report also records time to the first completed render, check timestamps,
+browser long tasks, resource transfer sizes, and the final JavaScript heap estimate.
+Those measurements describe one full interaction sweep on the current shared
+host; they are not a controlled hardware benchmark or a peak-memory measurement.

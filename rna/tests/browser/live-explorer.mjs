@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { downloadCsv, waitReady, numericText } from './helpers.mjs';
-import { checkPairControls, checkPuckerSurvey } from './rna-specific-controls.mjs';
+import { checkPairControls, checkPuckerSurvey, checkBroadResidueScope } from './rna-specific-controls.mjs';
 
 const workspace = path.resolve(process.env.RNA_WORKSPACE || process.cwd());
 const output = path.resolve(process.env.RNA_BROWSER_OUTPUT || path.join(workspace, 'data/pure_rna/browser_validation'));
@@ -13,11 +13,20 @@ const { chromium } = await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE ||
 const report = { startedAt: new Date().toISOString(), url: process.env.RNA_URL || 'http://127.0.0.1:8767/nucleic.pages/rna/', checks: [], pageErrors: [], consoleErrors: [], failedRequests: [], responses: [] };
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
+await page.addInitScript(() => {
+  performance.setResourceTimingBufferSize(10000);
+  globalThis.rnaBrowserLongTasks = { count: 0, totalMs: 0, maximumMs: 0 };
+  if (PerformanceObserver.supportedEntryTypes.includes('longtask')) {
+    new PerformanceObserver(list => { for (const task of list.getEntries()) {
+      const report = globalThis.rnaBrowserLongTasks; report.count++; report.totalMs += task.duration; report.maximumMs = Math.max(report.maximumMs, task.duration);
+    } }).observe({ type: 'longtask', buffered: true });
+  }
+});
 page.on('pageerror', error => { report.pageErrors.push(error.message); console.error(`PAGE ERROR ${error.message}`); });
 page.on('console', message => { if (message.type() === 'error') { report.consoleErrors.push(message.text()); console.error(`CONSOLE ERROR ${message.text()}`); } });
 page.on('requestfailed', request => report.failedRequests.push({ url: request.url(), error: request.failure()?.errorText }));
 page.on('response', response => report.responses.push({ url: response.url(), status: response.status() }));
-const record = (name, evidence) => { report.checks.push({ name, passed: true, evidence }); console.log(`PASS ${name}`); };
+const record = (name, evidence) => { report.checks.push({ name, passed: true, elapsedMs: Date.now() - Date.parse(report.startedAt), evidence }); console.log(`PASS ${name}`); };
 
 async function snapshot(kind = 'distribution') {
   return page.evaluate(kind => {
@@ -26,7 +35,8 @@ async function snapshot(kind = 'distribution') {
     const result = source.result;
     return { snapshot_id: source.snapshot_id, build_id: source.build_id, selection_spec: source.selection_spec,
       result: { ...result,
-        series: result.series?.map(series => ({ ...series, rows: series.rows?.map(row => ({ id: row.id, comp_id: row.comp_id, context: row.context })) })),
+        series: result.series?.map(series => ({ ...series, rows: series.rows?.map(row => ({ id: row.id, comp_id: row.comp_id,
+          context: row.context ?? row.context_id ?? row.sequence_context ?? row.pair_label ?? row.step_label ?? row.comp_id ?? '' })) })),
         points: result.points?.map(point => ({ x: point.x, y: point.y, left_id: point.left_id, right_id: point.right_id })) } };
   }, kind);
 }
@@ -35,7 +45,7 @@ async function verifyDistribution(name, button = '#filteredCsvDownload', kind = 
   assert(current?.result?.series, `${kind} has no completed snapshot`);
   const exported = await downloadCsv(page, button, path.join(output, `${name}.csv`));
   const expected = current.result.series.flatMap(series => series.values.map((value, index) => ({
-    id: series.rowIds[index], group: series.key, value, weight: series.weights[index],
+    id: series.rowIds[index], group: series.key, value, weight: series.weights[index], context: series.rows[index]?.context ?? '',
   })));
   assert.equal(exported.rows.length, expected.length, 'CSV membership count differs from plotted snapshot');
   for (let i = 0; i < expected.length; i++) {
@@ -44,6 +54,7 @@ async function verifyDistribution(name, button = '#filteredCsvDownload', kind = 
     assert.equal(actual.build_id, current.build_id);
     assert.equal(actual.id, wanted.id);
     assert.equal(actual.group, wanted.group);
+    assert.equal(actual.context, wanted.context, 'CSV lost the displayed sequence context');
     assert.equal(Number(actual.value), wanted.value, 'Raw measurement lost numeric precision');
     assert.equal(Number(actual.weight), wanted.weight);
     assert.equal(actual.parameter, current.result.parameter.id);
@@ -57,8 +68,10 @@ async function verifyDistribution(name, button = '#filteredCsvDownload', kind = 
 }
 
 try {
+  const navigationStarted = Date.now();
   await page.goto(report.url, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await waitReady(page);
+  report.initialReadyMs = Date.now() - navigationStarted;
   assert.equal(await page.title(), 'Pure RNA Explorer');
   const release = await page.evaluate(() => window.rnaExplorer.repository.loadManifest());
   report.release = { buildId: release.build_id, partial: release.partial === true, counts: release.counts, capabilities: release.capabilities };
@@ -74,6 +87,7 @@ try {
   assert(!contexts.some(value => value.trim() === 'T'), 'Thymine context exposed for canonical RNA');
   await page.screenshot({ path: path.join(output, 'rna-initial-desktop.png'), fullPage: true });
   record('RNA identity and default controls', { contexts, initialRequests: initiallyFetched.length });
+  if (!release.partial) await checkBroadResidueScope(page, record);
 
   await page.click('#universeToggle');
   assert(await page.locator('#universeDrawer').isVisible());
@@ -190,6 +204,12 @@ try {
   const dimensions = await page.evaluate(() => ({ viewport: innerWidth, body: document.body.scrollWidth, root: document.documentElement.scrollWidth }));
   assert(dimensions.root <= dimensions.viewport + 2, `Mobile document overflows horizontally: ${JSON.stringify(dimensions)}`);
   record('Mobile layout', dimensions);
+  report.performance = await page.evaluate(() => ({
+    longTasks: globalThis.rnaBrowserLongTasks,
+    heap: performance.memory ? { used: performance.memory.usedJSHeapSize, total: performance.memory.totalJSHeapSize, limit: performance.memory.jsHeapSizeLimit } : null,
+    resources: performance.getEntriesByType('resource').map(entry => ({ url: entry.name, durationMs: entry.duration, transferBytes: entry.transferSize, encodedBytes: entry.encodedBodySize, decodedBytes: entry.decodedBodySize })),
+    note: 'One Chromium session on this shared host; includes the complete interaction sweep, all cached families, ranking, exports, and screenshots. Not a controlled hardware benchmark.',
+  }));
   assert.deepEqual(report.pageErrors, [], 'Uncaught browser exceptions');
   assert.deepEqual(report.consoleErrors, [], 'Browser console errors');
   assert.deepEqual(report.failedRequests, [], 'Failed network requests');

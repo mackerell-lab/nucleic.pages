@@ -35,7 +35,11 @@ function escapeCsv(value) {
 }
 const identityColumns = ['id', 'pdb_id', 'model_id', 'entity_id', 'label_asym_id', 'label_seq_id', 'auth_asym_id', 'auth_seq_id', 'insertion_code', 'comp_id', 'context',
   'source_observation_id', 'residue_id', 'pair_id', 'endpoint_role', 'opening', 'opening_bin'];
-function identity(row = {}) { return identityColumns.map(key => row[key] ?? (key === 'pdb_id' ? row.accession : null)); }
+function identity(row = {}) {
+  return identityColumns.map(key => key === 'context'
+    ? row.context ?? row.context_id ?? row.sequence_context ?? row.pair_label ?? row.step_label ?? row.comp_id ?? null
+    : row[key] ?? (key === 'pdb_id' ? row.accession : null));
+}
 function serialize(headers, records) { return [headers, ...records].map(record => record.map(escapeCsv).join(',')).join('\r\n') + '\r\n'; }
 
 export function csv(snapshot) {

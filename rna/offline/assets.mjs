@@ -15,7 +15,8 @@ const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',su
 function slimRow(row, parameters) {
   const allowed = ['id','pdb_id','entry_id','entity_id','label_asym_id','label_seq_id','auth_asym_id','auth_seq_id','comp_id',
     'model_id','altloc','pucker_class','sequence_context','pair_label','pair_type','interaction_family','family','residue1_id',
-    'residue2_id','pair1_id','pair2_id','residue_ids','entity_ids','endpoint_entities','chain_ids','is_terminal','is_terminal_any','quality_flags'];
+    'residue2_id','pair1_id','pair2_id','residue_ids','entity_ids','endpoint_entities','chain_ids','is_terminal','is_terminal_any','quality_flags',
+    'step_label','frame_convention','atom_roles','near','alternative','stem_eligible','topology','is_terminal_5p','is_terminal_3p'];
   const result = Object.fromEntries(allowed.filter(key => row[key] !== undefined).map(key => [key, row[key]]));
   result.pdb_id ??= row.entry_id;
   result.values = {}; result.statuses = {};
@@ -25,6 +26,22 @@ function slimRow(row, parameters) {
     result.statuses[id] = row.statuses?.[id] ?? (Number.isFinite(value) ? 'available' : 'missing');
   }
   return result;
+}
+
+function publicCoordinatePolicy(policy) {
+  if (!policy) return null;
+  const {model_id,model_ids,model_count,...rules}=policy;
+  return {...rules,selected_model_location:'metadata.entries[].selected_model_id',
+    model_inventory_location:'metadata.entries[].coordinate_policy'};
+}
+
+function publicStages(stages) {
+  return Object.fromEntries(Object.entries(stages ?? {}).map(([name,stage])=>[name,{
+    status:stage.status,started_at:stage.started_at,completed_at:stage.completed_at,
+    signature:stage.signature,runtime:stage.runtime ?? null,output_count:stage.outputs?.length ?? 0,
+    // Hash content identities, never publish workstation paths or output lists.
+    outputs_sha256:sha256(JSON.stringify((stage.outputs ?? []).map(({sha256,bytes})=>({sha256,bytes})))),
+  }]));
 }
 
 /** Spool per-partition JSON so a worldwide survey is never retained as one array. */
@@ -93,15 +110,23 @@ export async function buildAssets({build, buildDir, scope, assetsRoot}) {
   const assetEntries=[...metadata.entries].sort((a,b)=>`${a.method}|${a.profiles.relaxed}|${a.pdb_id}`.localeCompare(`${b.method}|${b.profiles.relaxed}|${b.pdb_id}`));
   for (const entry of assetEntries) {
     const residues = await readJson(path.join(buildDir, 'tables/residue', `${entry.pdb_id}.json`));
-    const residueEntities = new Map(residues.map(row => [row.id,row.entity_id]));
+    const residueIndex = new Map(residues.map(row => [row.id,row]));
+    const geometry = await readJson(path.join(buildDir, 'tables/geometry', `${entry.pdb_id}.json`));
+    const pairIndex = new Map((geometry.families?.base_pair ?? []).map(row=>[row.id,row]));
     const withEndpoints = row => {
-      const ids = row.residue_ids ?? [row.residue1_id,row.residue2_id].filter(Boolean);
-      const entityIds = [...new Set(ids.map(id=>residueEntities.get(id)).filter(id=>id != null))];
-      return {...row,pdb_id:entry.pdb_id,endpoint_entities:entityIds.map(entity_id=>({pdb_id:entry.pdb_id,entity_id}))};
+      const pair=row.pair_id ? pairIndex.get(row.pair_id) : null;
+      if(row.pair_id && !pair) throw new Error(`Unknown survey pair: ${row.pair_id}`);
+      const ids = pair?.residue_ids ?? row.residue_ids ?? [row.residue1_id,row.residue2_id,
+        row.residue_id ?? row.target_residue_id].filter(Boolean);
+      if(!ids.length || ids.some(id=>!residueIndex.has(id))) throw new Error(`Unknown observation endpoints: ${row.id}`);
+      const endpoints=ids.map(id=>residueIndex.get(id));
+      const entityIds = [...new Set(endpoints.map(residue=>residue.entity_id))];
+      return {...row,pdb_id:entry.pdb_id,model_id:row.model_id ?? entry.selected_model_id,
+        residue_ids:ids,is_terminal_any:endpoints.some(residue=>residue.is_terminal_any===true),
+        endpoint_entities:entityIds.map(entity_id=>({pdb_id:entry.pdb_id,entity_id}))};
     };
     for (const [family, parameters] of definitions) if (parameters[0].level === 'residue' || parameters[0].observation_level === 'residue')
       await partitions.append(`families/${family}`, residues.map(row => slimRow(row, parameters)));
-    const geometry = await readJson(path.join(buildDir, 'tables/geometry', `${entry.pdb_id}.json`));
     capabilities.push(geometry.capabilities);
     for (const [family, rows] of Object.entries(geometry.families ?? {})) {
       const parameters = definitions.get(family);
@@ -114,9 +139,9 @@ export async function buildAssets({build, buildDir, scope, assetsRoot}) {
     if (geometry.interactions?.length) relationTypes.add('interactions');
     const survey = await readJson(path.join(buildDir, 'tables/survey', `${entry.pdb_id}.json`));
     const scalarGroups = Map.groupBy ? Map.groupBy(survey.scalars, row => row.term_id) : groupBy(survey.scalars, row => row.term_id);
-    for (const [term, rows] of scalarGroups) await partitions.append(`survey/scalars/${term}`, rows.map(({term_label,survey_group,unit, ...row}) => row));
+    for (const [term, rows] of scalarGroups) await partitions.append(`survey/scalars/${term}`, rows.map(({term_label,survey_group,unit, ...row}) => withEndpoints(row)));
     const coordinateGroups = groupBy(survey.coordinates, row => `${row.anchor_frame}_${row.anchor_base}`);
-    for (const [group, rows] of coordinateGroups) await partitions.coordinates(group, rows);
+    for (const [group, rows] of coordinateGroups) await partitions.coordinates(group, rows.map(withEndpoints));
   }
   const descriptors = await partitions.finish(releaseRoot);
   const families = [];
@@ -130,8 +155,10 @@ export async function buildAssets({build, buildDir, scope, assetsRoot}) {
       ...parameter,id:parameter.id ?? parameter.param_id,label:parameter.label ?? parameter.display_name,
       period:parameter.period ?? null})),...descriptor});
   }
-  const metadataOutput = await scope.json(path.join(releaseRoot, 'metadata.json'), metadata);
-  const decisionBytes = gzipSync(Buffer.from(JSON.stringify(decisions))), decisionOutput = await scope.write(path.join(releaseRoot, 'provenance/decisions.json.gz'), decisionBytes);
+  const metadataRaw=Buffer.from(JSON.stringify(metadata)),metadataBytes=gzipSync(metadataRaw,{level:9});
+  const metadataOutput = await scope.write(path.join(releaseRoot, 'metadata.json.gz'), metadataBytes);
+  const publicDecisions=decisions.map(({normalized_path,...record})=>record);
+  const decisionBytes = gzipSync(Buffer.from(JSON.stringify(publicDecisions))), decisionOutput = await scope.write(path.join(releaseRoot, 'provenance/decisions.json.gz'), decisionBytes);
   const scalarTerms = {}, coordinateGroups = {};
   for (const [key, descriptor] of descriptors) {
     if (key.startsWith('survey/scalars/')) scalarTerms[key.split('/').at(-1)] = descriptor;
@@ -147,10 +174,10 @@ export async function buildAssets({build, buildDir, scope, assetsRoot}) {
       candidate_count:discovery.source_count,processed_candidate_count:discovery.selected_count},
     counts:{entries:metadata.entries.length,entities:metadata.entities.length,residues:metadata.entries.reduce((n,row) => n + row.residue_count,0),
       excluded:decisions.filter(row => !row.accepted && !row.reasons.includes('not_selected_partial_build')).length},
-    metadata:{path:'metadata.json',sha256:metadataOutput.sha256},families,
+    metadata:{path:'metadata.json.gz',sha256:metadataOutput.sha256,bytes:metadataBytes.length,uncompressed_bytes:metadataRaw.length},families,
     relations:Object.fromEntries([...relationTypes].map(type => [type,descriptors.get(`relations/${type}`)])),
     survey:{terms:TERM_REGISTRY,opening_bins:publicBaseGeometryConfig().opening_bins,scalars:{terms:scalarTerms},coordinates:{groups:coordinateGroups}},
-    coordinate_policy:metadata.entries[0]?.coordinate_policy ?? null,
+    coordinate_policy:publicCoordinatePolicy(metadata.entries[0]?.coordinate_policy),
     defaults:{family:'backbone',parameter:'chi',profile:'relaxed',method:'xray',max_resolution:3},
     profiles:{all:'all_associated_components',relaxed:'dna_compatible_relaxed_v1',conservative:'dna_compatible_conservative_v1',mw100:'dna_compatible_mw100_v1'},
     capabilities:{residue:true,geometry:capabilities.every(item => item?.base_pair === 'available'),survey:true,
@@ -161,7 +188,7 @@ export async function buildAssets({build, buildDir, scope, assetsRoot}) {
       'No DNA ABI or BI/BII/BIII labels; backbone suites and representative IFE selection are not implemented.',
       'Pair and step geometry describe supported FR3D interactions and selected stems, not every RNA contact.'],
     provenance:{decisions:{path:'provenance/decisions.json.gz',sha256:decisionOutput.sha256,row_count:decisions.length},
-      build_stages:structuredClone(build.stages),coordinate_policy:metadata.entries[0]?.coordinate_policy ?? null}};
+      build_stages:publicStages(build.stages),coordinate_policy:publicCoordinatePolicy(metadata.entries[0]?.coordinate_policy)}};
   await scope.json(path.join(releaseRoot, 'manifest.json'), manifest);
   const outputs = [...descriptors.values()].map(item => ({path:path.join(releaseRoot,item.path),sha256:item.sha256,bytes:item.bytes}));
   outputs.push(metadataOutput,decisionOutput,{path:path.join(releaseRoot,'manifest.json'),sha256:sha256(await fs.readFile(path.join(releaseRoot,'manifest.json')))});
@@ -180,22 +207,58 @@ export async function validateRelease(manifestPath) {
   };
   const metadata = await load(manifest.metadata), entryIds = new Set(metadata.entries.map(row => row.pdb_id));
   if (entryIds.size !== metadata.entries.length || entryIds.size !== manifest.counts.entries) errors.push('Entry count or uniqueness');
-  const residueIds = new Set();
+  const entryMap=new Map(metadata.entries.map(row=>[row.pdb_id,row]));
+  const entityIds=new Set(metadata.entities.map(row=>`${row.pdb_id}|${row.entity_id}`));
+  if(entityIds.size!==metadata.entities.length || entityIds.size!==manifest.counts.entities) errors.push('Entity count or uniqueness');
+  if(metadata.entities.some(row=>!entryIds.has(row.pdb_id))) errors.push('Entity entry foreign key');
+  const residueIds = new Set(),residueMap=new Map(),pairMap=new Map(),stepMap=new Map();
+  const observationRefs=new Map();
+  const validValue=(value,status)=> (value===null || Number.isFinite(value)) && typeof status==='string' && status.length>0 &&
+    (['available','ok'].includes(status) ? Number.isFinite(value) : value===null);
+  const ownership=(row,label)=>{
+    const pdb=row.pdb_id ?? row.entry_id,entry=entryMap.get(pdb);
+    if(!entry) errors.push(`Entry foreign key: ${label}`);
+    if(row.entity_id!=null && !entityIds.has(`${pdb}|${row.entity_id}`)) errors.push(`Entity foreign key: ${label}`);
+    for(const endpoint of row.endpoint_entities ?? []) if(endpoint.pdb_id!==pdb || !entityIds.has(`${endpoint.pdb_id}|${endpoint.entity_id}`)) errors.push(`Endpoint entity foreign key: ${label}`);
+    if(row.model_id!=null && entry && String(row.model_id)!==String(entry.selected_model_id)) errors.push(`Selected model mismatch: ${label}`);
+  };
   for (const family of manifest.families) {
     const rows = await load(family), ids = new Set();
     if (rows.length !== family.row_count) errors.push(`Row count: ${family.id}`);
     for (const row of rows) {
       if (!row.id || ids.has(row.id)) errors.push(`Duplicate identity: ${family.id}/${row.id}`);
       ids.add(row.id);
-      if (!entryIds.has(row.pdb_id ?? row.entry_id)) errors.push(`Entry foreign key: ${family.id}/${row.id}`);
+      ownership(row,`${family.id}/${row.id}`);
       for (const parameter of family.parameters) {
         const value = row.values?.[parameter.id], status = row.statuses?.[parameter.id];
-        if (!(value === null || Number.isFinite(value)) || !status) errors.push(`Value/status: ${family.id}/${parameter.id}`);
-        if (value === null && ['available','ok'].includes(status)) errors.push(`Null available value: ${family.id}/${parameter.id}`);
+        if (!validValue(value,status)) errors.push(`Value/status: ${family.id}/${parameter.id}`);
       }
-      if (family.level === 'residue') residueIds.add(row.id);
+      if (family.level === 'residue') {residueIds.add(row.id);residueMap.set(row.id,{pdb_id:row.pdb_id,entity_id:row.entity_id,is_terminal_any:row.is_terminal_any});}
+      else {
+        const reference={id:row.id,pdb_id:row.pdb_id,residue_ids:row.residue_ids,pair1_id:row.pair1_id,pair2_id:row.pair2_id,
+          endpoint_entities:row.endpoint_entities,is_terminal_any:row.is_terminal_any};
+        if(observationRefs.has(row.id) && JSON.stringify(observationRefs.get(row.id))!==JSON.stringify(reference)) errors.push(`Observation identity differs across families: ${row.id}`);
+        else observationRefs.set(row.id,reference);
+      }
+      if(family.id==='base_pair') pairMap.set(row.id,row.residue_ids);
+      if(family.id==='step') {stepMap.set(row.id,{pairs:[row.pair1_id,row.pair2_id],residue_ids:row.residue_ids});if(!row.step_label) errors.push(`Missing step context: ${row.id}`);}
     }
     checks.push({family:family.id,row_count:rows.length});
+  }
+  if(residueIds.size!==manifest.counts.residues) errors.push('Residue count');
+  const endpoints=(row,label)=>{
+    const ids=row.residue_ids ?? [row.residue_id ?? row.target_residue_id].filter(Boolean);
+    const targets=ids.map(id=>residueMap.get(id));
+    if(!ids.length || targets.some(residue=>!residue || residue.pdb_id!==row.pdb_id)) {errors.push(`Residue foreign key: ${label}`);return;}
+    const expected=[...new Set(targets.map(residue=>`${row.pdb_id}|${residue.entity_id}`))].sort();
+    const actual=(row.endpoint_entities ?? []).map(endpoint=>`${endpoint.pdb_id}|${endpoint.entity_id}`).sort();
+    if(JSON.stringify(expected)!==JSON.stringify(actual)) errors.push(`Endpoint ownership: ${label}`);
+    if(row.is_terminal_any!==targets.some(residue=>residue.is_terminal_any===true)) errors.push(`Terminal endpoint flag: ${label}`);
+    if(row.pair_id && (!pairMap.has(row.pair_id) || JSON.stringify(ids)!==JSON.stringify(pairMap.get(row.pair_id)))) errors.push(`Pair foreign key or endpoint order: ${label}`);
+  };
+  for(const row of observationRefs.values()) {
+    endpoints(row,row.id);
+    for(const key of ['pair1_id','pair2_id']) if(row[key] && !pairMap.has(row[key])) errors.push(`Step pair foreign key: ${row.id}`);
   }
   for (const [id, descriptor] of Object.entries(manifest.survey.scalars.terms)) {
     const rows = await load(descriptor), ids = new Set();
@@ -203,21 +266,46 @@ export async function validateRelease(manifestPath) {
     for (const row of rows) {
       if (ids.has(row.id) || row.term_id !== id || !entryIds.has(row.pdb_id)) errors.push(`Survey identity: ${id}`);
       ids.add(row.id);
+      ownership(row,`survey/${id}`);endpoints(row,`survey/${id}`);
       if (row.residue_id && !residueIds.has(row.residue_id)) errors.push(`Survey residue key: ${id}`);
-      if (!(row.value === null || Number.isFinite(row.value))) errors.push(`Survey value: ${id}`);
+      if (!validValue(row.value,row.status)) errors.push(`Survey value/status: ${id}`);
     }
   }
   for (const group of Object.values(manifest.survey.coordinates.groups)) {
-    let count=0;
+    let count=0;const ids=new Set();
     for(const descriptor of group.partitions ?? [group]) {
       const rows=await load(descriptor);count+=rows.length;
       if(rows.length !== descriptor.row_count || (group.partitions && rows.length>10000)) errors.push('Coordinate partition row count');
       if(descriptor.entry_ids && rows.some(row=>!descriptor.entry_ids.includes(row.pdb_id))) errors.push('Coordinate partition entry index');
+      for(const row of rows) {
+        if(!row.id || ids.has(row.id)) errors.push('Coordinate identity');ids.add(row.id);
+        ownership(row,`coordinate/${row.id}`);endpoints(row,`coordinate/${row.id}`);
+        if(!['x','y','z'].every(axis=>Number.isFinite(row[axis])) || !['available','ok'].includes(row.status)) errors.push(`Coordinate value/status: ${row.id}`);
+        for(const key of ['anchor_residue_id','target_residue_id']) if(!residueMap.has(row[key]) || residueMap.get(row[key]).pdb_id!==row.pdb_id) errors.push(`Coordinate residue foreign key: ${row.id}`);
+        if(row.residue_ids && (!row.residue_ids.includes(row.anchor_residue_id) || !row.residue_ids.includes(row.target_residue_id))) errors.push(`Coordinate endpoint membership: ${row.id}`);
+      }
     }
     if(count!==group.row_count) errors.push('Coordinate group row count');
   }
-  for (const descriptor of Object.values(manifest.relations)) await load(descriptor);
+  for (const [type,descriptor] of Object.entries(manifest.relations)) {
+    const rows=await load(descriptor),ids=new Set();
+    if(rows.length!==descriptor.row_count) errors.push(`Relation count: ${type}`);
+    for(const row of rows) {
+      if(!row.id || ids.has(row.id)) errors.push(`Relation identity: ${type}`);ids.add(row.id);
+      if(type==='interactions') {
+        const a=residueMap.get(row.residue1_id),b=residueMap.get(row.residue2_id);
+        if(!a || !b || a.pdb_id!==b.pdb_id) errors.push(`Interaction residue foreign key: ${row.id}`);
+      } else if(row.kind==='pair_residue') {
+        if(pairMap.get(row.pair_id)?.[row.side-1]!==row.residue_id || !residueMap.has(row.residue_id)) errors.push(`Pair relation endpoint: ${row.id}`);
+      } else if(row.kind==='step_pair') {
+        if(stepMap.get(row.step_id)?.pairs[row.side-1]!==row.pair_id || !pairMap.has(row.pair_id)) errors.push(`Step pair relation endpoint: ${row.id}`);
+      } else if(row.kind==='step_residue') {
+        if(stepMap.get(row.step_id)?.residue_ids[row.side-1]!==row.residue_id || !residueMap.has(row.residue_id)) errors.push(`Step residue relation endpoint: ${row.id}`);
+      } else errors.push(`Unsupported relation kind: ${row.kind}`);
+    }
+  }
   const decisions = await load(manifest.provenance.decisions);
   if (decisions.length !== manifest.source.candidate_count || decisions.filter(row=>row.accepted).length !== entryIds.size) errors.push('Candidate ledger reconciliation');
+  if(new Set(decisions.map(row=>row.pdb_id)).size!==decisions.length || decisions.some(row=>row.accepted!==entryIds.has(row.pdb_id))) errors.push('Candidate ledger identities');
   return {ok:!errors.length,checked_at:new Date().toISOString(),build_id:manifest.build_id,partial:manifest.partial,checks,errors};
 }

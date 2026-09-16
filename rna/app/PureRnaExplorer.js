@@ -5,6 +5,7 @@ import { distribution, histogram2D } from '../core/analysis.js';
 import { join } from '../core/joints.js';
 import { jointSelectionSpecs } from '../core/joint-selection.js';
 import { rankSurveyContexts, orderSurveyRanks, surveyContext } from '../core/survey-ranking.js';
+import { CoordinateSummary } from '../core/coordinates.js';
 import { csv, createPlotSnapshot, provenance } from '../core/export.js';
 import { cards, control, distributionTraces, download, element, entryId, labels, number, options, plotLayout, stats, summaryCards, tableRows } from '../views/panels.js';
 import { annotationLabel } from '../views/labels.js';
@@ -454,7 +455,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     if (!this.current(revision)) return;
     const repository = this.repository;
     const chunks = repository.iterateSurveyCoordinates ? repository.iterateSurveyCoordinates(group, { entryIds: eligible }) : (async function* () { yield await repository.loadSurveyCoordinates(group); })();
-    const groups = new Map(); const contextSet = new Set();
+    const accumulator = new CoordinateSummary(); const contextSet = new Set();
     for await (const chunk of chunks) {
       if (!this.current(revision)) return;
       const selection = selectRows(chunk, this.metadata, { ...state.selection, contexts: [] });
@@ -464,27 +465,22 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         if (context) contextSet.add(context);
         if (state.survey.coordinateContext !== 'all' && context !== state.survey.coordinateContext) continue;
         if (state.survey.coordinateOpening !== 'all' && row.opening_bin !== state.survey.coordinateOpening) continue;
-        const name = row.atom_label ?? row.atom ?? row.atom_name ?? row.atom_id; const xyz = row.xyz ?? [row.x, row.y, row.z];
-        if (!name || !xyz.every(Number.isFinite)) continue;
-        const key = `${context ?? ''} ${name}`.trim();
-        if (!groups.has(key)) groups.set(key, { mean: [0, 0, 0], m2: 0, n: 0, entries: new Set() });
-        const accumulator = groups.get(key); accumulator.n++; accumulator.entries.add(entryId(row));
-        for (let axis = 0; axis < 3; axis++) {
-          const delta = xyz[axis] - accumulator.mean[axis]; accumulator.mean[axis] += delta / accumulator.n;
-          accumulator.m2 += delta * (xyz[axis] - accumulator.mean[axis]);
-        }
+        accumulator.add(row);
       }
     }
     const contexts = [...contextSet].sort();
-    const averages = [...groups].map(([atom, result]) => ({ atom, mean: result.mean, rms: Math.sqrt(Math.max(0, result.m2 / result.n)), n: result.n, entries: result.entries.size }));
+    const averages = accumulator.results();
     await this.commit(revision, async () => {
       await this.plot(this.$('coordinatePlot'), [{ type: 'scatter3d', mode: 'markers+text', x: averages.map(row => row.mean[0]), y: averages.map(row => row.mean[1]), z: averages.map(row => row.mean[2]), text: averages.map(row => row.atom), marker: { size: 5, color: '#174a7e' }, textposition: 'top center' }], { paper_bgcolor: 'rgba(0,0,0,0)', margin: { t: 10, b: 0, l: 0, r: 0 }, scene: { aspectmode: 'data', xaxis: { title: 'x (Å)' }, yaxis: { title: 'y (Å)' }, zaxis: { title: 'z (Å)' } } });
       if (!this.current(revision)) return;
       options(this.$('coordinateGroupSelect'), groupChoices.map(id => ({ id, label: id.replace('cytosine_standard_pair', 'Cytosine standard pair frame').replace('rna_standard_base', 'RNA standard base frame').replaceAll('_', ' ') })), group);
       this.state.survey.coordinateGroup = group;
-      this.$('coordinateFrameNote').textContent = `Frame: ${group?.includes('cytosine_standard_pair') ? 'Cytosine standard frame, aligned using the deposited C base and the pinned x3dna reference.' : 'RNA standard base frame, aligned to the pinned base-specific x3dna reference.'} Atom averages are computed separately for each recorded context and atom identity.`;
+      this.coordinateSummary = averages;
+      this.$('coordinateFrameNote').textContent = `Frame: ${group?.includes('cytosine_standard_pair') ? 'Cytosine standard frame, aligned using the deposited C base and the pinned x3dna reference.' : 'RNA standard base frame, aligned to the pinned base-specific x3dna reference.'} Atom averages are computed separately for each recorded context and atom identity. Residues count distinct target residues; pairs count explicit pair identities. Pair counts are not applicable to single-base frames. Counts use the selected deposited model.`;
       options(this.$('coordinateContextSelect'), [{ id: 'all', label: 'All recorded contexts' }, ...contexts.map(id => ({ id, label: id }))], state.survey.coordinateContext);
-      this.$('baseGeometryCoordBody').replaceChildren(...averages.map(item => { const row = element('tr'); row.append(...[item.atom, number(item.n), number(item.entries), ...item.mean.map(number), number(item.rms)].map(value => element('td', {}, value))); return row; }));
+      const precise = value => Number.isFinite(value) ? value.toFixed(4) : '—';
+      this.$('baseGeometryCoordBody').replaceChildren(...averages.map(item => { const row = element('tr'); row.append(...[item.atom, number(item.n), number(item.residues), item.pairs === null ? 'Not applicable' : number(item.pairs), number(item.entries), ...item.mean.map(precise), precise(item.rms)].map(value => element('td', {}, value))); return row; }));
+      if (!averages.length) { const row = element('tr'); row.append(element('td', { colspan: '9' }, 'No coordinate observations match the current filters.')); this.$('baseGeometryCoordBody').append(row); }
     });
     if (this.lastCoordinateGroup && this.lastCoordinateGroup !== group) this.repository.releaseSurvey?.('coordinates', this.lastCoordinateGroup);
     this.lastCoordinateGroup = group;

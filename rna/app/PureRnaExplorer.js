@@ -15,14 +15,17 @@ const choices = pairs => pairs.map(([id, label]) => ({ id, label }));
 const rowsOf = table => Array.isArray(table) ? table : table?.rows ?? [];
 const dataValue = row => typeof row.value === 'number' && Number.isFinite(row.value) ? row.value : null;
 
+const DEFAULT_SELECTION = Object.freeze({ components: 'relaxed', methods: ['xray'], resolutionMax: 3, contexts: [], functions: [], subtypes: [], structures: [], puckerStates: [], includeEnds: true, pairPolicy: 'exact', interactionFamilies: [], stemOnly: false });
+const DEFAULT_DISPLAY = Object.freeze({ groupBy: 'base', circularMode: 'wrap_360', sigma: 1.6, normalization: 'probability', fine: true, traceStyle: 'filled' });
+const DEFAULT_JOINT = Object.freeze({ mode: 'identity', endpoint: 'both', residueContexts: [], residuePuckers: [], type: 'heatmap', colorScale: 'linear', palette: 'hotspots', labels: false, contourCount: 12 });
+
 export class PureRnaExplorer extends NucleicAcidExplorer {
   constructor(config) {
     super(config);
     this.state = {
-      selection: { components: 'relaxed', methods: ['xray'], resolutionMax: 3, contexts: [], functions: [], subtypes: [], structures: [], puckerStates: [], includeEnds: true, pairPolicy: 'exact', interactionFamilies: [], stemOnly: false },
-      display: { groupBy: 'base', circularMode: 'wrap_360', sigma: 1.6, normalization: 'probability', fine: true, traceStyle: 'filled' },
+      selection: structuredClone(DEFAULT_SELECTION), display: structuredClone(DEFAULT_DISPLAY),
       familyId: '', parameterId: 'chi', family2Id: '', parameter2Id: '',
-      joint: { mode: 'identity', endpoint: 'both', residueContexts: [], residuePuckers: [], type: 'heatmap', colorScale: 'linear', palette: 'hotspots', labels: false, contourCount: 12 },
+      joint: structuredClone(DEFAULT_JOINT),
       survey: { loaded: false, group: 'all', contexts: [], termId: '', opening: 'all', ranking: false, minimum: 20, coordinatesLoaded: false, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all' },
     };
     this.pages = { universe: 0, filtered: 0 }; this.filteredEntries = []; this.contributing = new Set();
@@ -118,6 +121,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   }
 
   bindEvents() {
+    this.listen(this.$('resetFilters'), 'click', () => this.resetFilters());
     for (const name of ['universe', 'filtered']) {
       this.listen(this.$(`${name}Toggle`), 'click', () => { const drawer = this.$(`${name}Drawer`); drawer.hidden = !drawer.hidden; this.$(`${name}Toggle`).setAttribute('aria-expanded', String(!drawer.hidden)); this.$(`${name}Toggle`).textContent = `${drawer.hidden ? 'Show' : 'Hide'} ${name === 'filtered' ? 'filtered ' : ''}PDB entries`; });
       this.listen(this.$(`${name}Prev`), 'click', () => { this.pages[name]--; this.renderTable(name); });
@@ -144,6 +148,17 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.listen(this.$('surveyOpeningSelect'), 'change', event => { this.state.survey.opening = event.target.value; this.requestRender(); });
     this.listen(this.$('surveyRankingLoad'), 'click', () => { this.state.survey.ranking = true; this.requestRender(); });
     control(this.$('surveyRankingControls'), { id: 'baseGeometryMinObsGroup', title: 'Minimum per opening bin', choices: choices([['5', '5'], ['20', '20'], ['50', '50'], ['100', '100']]), selected: '20', onChange: value => { this.state.survey.minimum = Number(value); this.requestRender(); } });
+  }
+
+  resetFilters() {
+    this.state.selection = structuredClone(DEFAULT_SELECTION);
+    this.state.display = structuredClone(DEFAULT_DISPLAY);
+    this.state.joint = structuredClone(DEFAULT_JOINT);
+    this.state.family2Id = ''; this.state.parameter2Id = '';
+    this.state.survey.contexts = []; this.state.survey.opening = 'all'; this.state.survey.ranking = false;
+    this.state.survey.coordinateContext = 'all'; this.state.survey.coordinateOpening = 'all';
+    this.updateSelectors(); this.renderControls();
+    return this.requestRender();
   }
 
   renderUniverse() {

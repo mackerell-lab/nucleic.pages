@@ -1,7 +1,10 @@
-import { deepFreeze } from './repository.js';
+import { deepFreeze, isImmutableData } from './repository.js';
 
 function ownedPlainCopy(value, copies = new WeakMap()) {
   if (!value || typeof value !== 'object') return value;
+  // Repository-owned JSON is immutable for the session. Retain those values,
+  // identities and metadata instead of copying every large family per plot.
+  if (isImmutableData(value)) return value;
   if (copies.has(value)) return copies.get(value);
   const copy = ArrayBuffer.isView(value) || Array.isArray(value) ? [] : {};
   copies.set(value, copy);
@@ -9,10 +12,11 @@ function ownedPlainCopy(value, copies = new WeakMap()) {
   return copy;
 }
 
-/** Call with the controls captured before any await and the completed result. */
+/** Call with captured controls and a completed result. transferResult gives up
+ * ownership of the result's entire plain-data graph; later mutation must stop. */
 export function createPlotSnapshot(options) {
   if (!options?.result) throw new Error('A plot snapshot requires a completed result');
-  return deepFreeze(ownedPlainCopy({
+  const snapshot = ownedPlainCopy({
     snapshot_id: options.snapshot_id || globalThis.crypto?.randomUUID?.() || `rna-${Date.now()}`,
     build_id: options.buildId || options.build_id || null,
     created_at: options.created_at || new Date().toISOString(),
@@ -23,8 +27,10 @@ export function createPlotSnapshot(options) {
     data_hashes: options.dataHashes || {},
     provenance: options.provenance || {},
     join_spec: options.joinSpec || null,
-    result: options.result,
-  }));
+    result: options.transferResult ? null : options.result,
+  });
+  if (options.transferResult) snapshot.result = options.result;
+  return deepFreeze(snapshot);
 }
 
 function escapeCsv(value) {

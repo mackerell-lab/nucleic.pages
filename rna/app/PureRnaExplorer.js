@@ -184,7 +184,9 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   snapshot(options) {
     const result = options.result;
     const parameters = result.kind === 'joint' ? [result.xParameter, result.yParameter] : [result.parameter];
-    return createPlotSnapshot({ ...options, coordinatePolicy: this.manifest.coordinate_policy ?? this.manifest.provenance?.coordinate_policy,
+    // Each render owns its completed result. Plotly receives separate trace arrays;
+    // later renders construct new results, so the current result can be frozen in place.
+    return createPlotSnapshot({ ...options, transferResult: true, coordinatePolicy: this.manifest.coordinate_policy ?? this.manifest.provenance?.coordinate_policy,
       parameterDefinitionIds: parameters.filter(Boolean).map(parameter => parameter.definition_id ?? parameter.id),
       dataHashes: this.manifest.data_hashes ?? this.manifest.hashes ?? this.manifest.checksums ?? Object.fromEntries([['metadata', this.manifest.metadata?.sha256], ...this.families.map(family => [`family:${family.id}`, family.sha256])].filter(([, hash]) => hash)),
       provenance: { source: this.manifest.source ?? this.manifest.sources, policy: this.manifest.policy, registry_version: this.manifest.registry_version, release_url: this.repository.releaseUrl, ...(options.provenance ?? {}) } });

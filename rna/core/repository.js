@@ -1,6 +1,24 @@
 /** A session pins one immutable RNA release; rejected requests can be retried. */
+const immutableData = new WeakSet();
+export function isImmutableData(value, seen = new WeakSet()) {
+  if (!value || typeof value !== 'object' || !Object.isFrozen(value)) return false;
+  if (immutableData.has(value)) return true;
+  const prototype = Object.getPrototypeOf(value);
+  if ((!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) || seen.has(value)) return false;
+  seen.add(value);
+  // Certify only when a snapshot wants to share this object. Walking descriptors
+  // for every unloaded survey row would make opening rankings unnecessarily slow.
+  for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+    if (!Object.hasOwn(descriptor, 'value')) return false;
+    const item = descriptor.value;
+    if (typeof item === 'function' || (item && typeof item === 'object' && !isImmutableData(item, seen))) return false;
+  }
+  immutableData.add(value);
+  return true;
+}
+
 export function deepFreeze(value, seen = new WeakSet()) {
-  if (value && typeof value === 'object' && !Object.isFrozen(value) && !seen.has(value)) {
+  if (value && typeof value === 'object' && !immutableData.has(value) && !seen.has(value)) {
     seen.add(value);
     for (const item of Object.values(value)) deepFreeze(item, seen);
     Object.freeze(value);

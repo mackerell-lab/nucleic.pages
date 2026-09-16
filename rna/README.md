@@ -21,9 +21,12 @@ Open <http://127.0.0.1:8767/nucleic.pages/rna/>. Start with the default filtered
 view, select a family/parameter, and use the CSV/provenance buttons to retain the
 exact plotted observations. Survey and aligned coordinates load when requested.
 
-This initial release has about 529 MiB of compressed assets, loaded on demand.
-All-method, all-component 2D analysis is memory intensive (about 2 GB in the local
-acceptance run); packaging and browser-memory optimization remain follow-up work.
+This release has about 529 MiB of compressed assets, loaded on demand.
+The latest local all-method, all-component chi/delta probe retained all 241,439
+finite identity matches and reported about 0.89 GB JavaScript heap and 8.2 seconds
+to render, compared with 1.83 GB and 18.3 seconds before snapshot ownership was
+transferred. These are single shared-host observations, not device-independent
+bounds. Packaging and further browser-memory optimization remain follow-up work.
 No GitHub Pages deployment is implied by a local build or commit.
 
 ## Build locally
@@ -85,6 +88,13 @@ Statistics use explicit residue, pair and step identities. Multi-label RNA
 functions are scoped to entities. CSV exports derive from frozen plot results,
 including raw values, selection and provenance. Survey assets are partitioned so
 one selected term or coordinate group can load independently.
+
+Pair/residue analysis has independent endpoint base and ribose pucker filters.
+Survey ranking separates each term/context and prioritizes sufficient per-bin
+coverage. Selecting a ranked context preserves that exact population in CSV.
+Each render transfers its completed result into an immutable snapshot; Plotly
+receives separate trace arrays. The public snapshot API copies mutable inputs
+unless the caller explicitly transfers ownership of the entire result graph.
 
 ## Verification
 

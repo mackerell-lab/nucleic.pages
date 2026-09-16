@@ -1,6 +1,45 @@
 import assert from 'node:assert/strict';
 import { waitReady } from './helpers.mjs';
 
+// Audited protected DNA palette: js/pure-dna.js:1981. This fixture never imports
+// or executes the DNA application's unconditional bootstrap.
+const dnaHotspots = [[0, '#00205b'], [0.0526, '#003b8e'], [0.1053, '#0051a8'], [0.1579, '#0069b4'],
+  [0.2105, '#0080b9'], [0.2632, '#0097bd'], [0.3158, '#00afb8'], [0.3684, '#00c6a7'],
+  [0.4211, '#00dd8c'], [0.4737, '#2ff272'], [0.5263, '#7fff5a'], [0.5789, '#c7ff54'],
+  [0.6316, '#ffe64c'], [0.6842, '#ffb53b'], [0.7368, '#ff7b2e'], [0.7895, '#ff4b2c'],
+  [0.8421, '#f2252e'], [0.8947, '#d8002c'], [0.9474, '#b30027'], [1, '#7f001d']];
+
+export async function checkPalettes(page, record) {
+  const expected = { hotspots: dnaHotspots, warm: 'YlOrRd', viridis: 'Viridis', cividis: 'Cividis', ocean: 'YlGnBu', forest: 'Greens', greys: 'Greys' };
+  const choices = await page.locator('#jointPaletteGroup button').evaluateAll(buttons => buttons.map(button => button.dataset.value));
+  assert.deepEqual(choices, Object.keys(expected), 'RNA palette choices differ from DNA');
+  const saved = await page.evaluate(() => {
+    globalThis.rnaPaletteBaseline = window.rnaExplorer.snapshots.joint.result.points.map(point => [point.left_id, point.right_id, point.x, point.y]);
+    return window.rnaExplorer.state.joint.palette;
+  });
+  const rendered = [];
+  try {
+    for (const [choice, colorscale] of Object.entries(expected)) {
+      await page.click(`#jointPaletteGroup button[data-value="${choice}"]`); await waitReady(page);
+      const evidence = await page.evaluate(() => {
+        const points = window.rnaExplorer.snapshots.joint.result.points, baseline = globalThis.rnaPaletteBaseline;
+        const mismatch = points.length !== baseline.length || points.some((point, index) => [point.left_id, point.right_id, point.x, point.y].some((value, key) => value !== baseline[index][key]));
+        const plot = document.querySelector('#jointPlot');
+        return { inputScale: plot.data[0].colorscale, renderedScale: plot._fullData[0].colorscale, mismatch, points: points.length };
+      });
+      assert.deepEqual(evidence.inputScale, colorscale, `${choice} does not use the DNA colorscale`);
+      assert(Array.isArray(evidence.renderedScale) && evidence.renderedScale.length > 1, 'Plotly did not resolve the colorscale');
+      assert.equal(evidence.mismatch, false, `${choice} changed raw joined observations`);
+      rendered.push({ choice, colorscale: evidence.renderedScale, points: evidence.points });
+    }
+    assert.equal(new Set(rendered.map(item => JSON.stringify(item.colorscale))).size, 7, 'Different palette choices produced identical scales');
+    record('Seven DNA-matching palettes preserve joint observations', { rendered });
+  } finally {
+    await page.evaluate(() => { delete globalThis.rnaPaletteBaseline; });
+    await page.click(`#jointPaletteGroup button[data-value="${saved}"]`); await waitReady(page);
+  }
+}
+
 export async function checkBroadResidueScope(page, record) {
   const started = Date.now();
   const evidence = await page.evaluate(async () => {

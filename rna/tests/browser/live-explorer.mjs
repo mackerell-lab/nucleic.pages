@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { downloadCsv, waitReady, numericText } from './helpers.mjs';
-import { checkPairControls, checkPuckerSurvey, checkBroadResidueScope } from './rna-specific-controls.mjs';
+import { checkPairControls, checkPuckerSurvey, checkBroadResidueScope, checkPalettes } from './rna-specific-controls.mjs';
 
 const workspace = path.resolve(process.env.RNA_WORKSPACE || process.cwd());
 const output = path.resolve(process.env.RNA_BROWSER_OUTPUT || path.join(workspace, 'data/pure_rna/browser_validation'));
@@ -36,6 +36,7 @@ async function snapshot(kind = 'distribution') {
     return { snapshot_id: source.snapshot_id, build_id: source.build_id, selection_spec: source.selection_spec,
       result: { ...result,
         series: result.series?.map(series => ({ ...series, rows: series.rows?.map(row => ({ id: row.id, comp_id: row.comp_id,
+          model_id: row.model_id, insertion_code: row.insertion_code, altloc: row.altloc,
           context: row.context ?? row.context_id ?? row.sequence_context ?? row.pair_label ?? row.step_label ?? row.comp_id ?? '' })) })),
         points: result.points?.map(point => ({ x: point.x, y: point.y, left_id: point.left_id, right_id: point.right_id })) } };
   }, kind);
@@ -46,6 +47,7 @@ async function verifyDistribution(name, button = '#filteredCsvDownload', kind = 
   const exported = await downloadCsv(page, button, path.join(output, `${name}.csv`));
   const expected = current.result.series.flatMap(series => series.values.map((value, index) => ({
     id: series.rowIds[index], group: series.key, value, weight: series.weights[index], context: series.rows[index]?.context ?? '',
+    model_id: series.rows[index]?.model_id, insertion_code: series.rows[index]?.insertion_code, altloc: series.rows[index]?.altloc,
   })));
   assert.equal(exported.rows.length, expected.length, 'CSV membership count differs from plotted snapshot');
   for (let i = 0; i < expected.length; i++) {
@@ -55,6 +57,7 @@ async function verifyDistribution(name, button = '#filteredCsvDownload', kind = 
     assert.equal(actual.id, wanted.id);
     assert.equal(actual.group, wanted.group);
     assert.equal(actual.context, wanted.context, 'CSV lost the displayed sequence context');
+    for (const field of ['model_id', 'insertion_code', 'altloc']) assert.equal(actual[field], wanted[field] == null ? '' : String(wanted[field]), `CSV lost ${field}`);
     assert.equal(Number(actual.value), wanted.value, 'Raw measurement lost numeric precision');
     assert.equal(Number(actual.weight), wanted.weight);
     assert.equal(actual.parameter, current.result.parameter.id);
@@ -63,7 +66,8 @@ async function verifyDistribution(name, button = '#filteredCsvDownload', kind = 
     const uiCount = numericText(await page.locator('#filteredObservationCount').textContent());
     assert.equal(uiCount, new Set(expected.map(row => row.id)).size);
   }
-  record(name, { buildId: current.build_id, parameter: current.result.parameter.id, csvRows: expected.length, uniqueObservations: new Set(expected.map(row => row.id)).size });
+  record(name, { buildId: current.build_id, parameter: current.result.parameter.id, csvRows: expected.length, uniqueObservations: new Set(expected.map(row => row.id)).size,
+    rowsWithInsertionCodes: expected.filter(row => row.insertion_code).length, rowsWithAltlocs: expected.filter(row => row.altloc).length });
   return current;
 }
 
@@ -129,6 +133,7 @@ try {
     assert.equal(Number(row.y_value), point.y);
   }
   record('Same-residue 2D plot and exact export', { points: jointCsv.rows.length, x: joint.result.xParameter.id, y: joint.result.yParameter.id });
+  await checkPalettes(page, record);
 
   await page.selectOption('#familySelect', 'base_pair');
   await waitReady(page);

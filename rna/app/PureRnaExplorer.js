@@ -6,6 +6,7 @@ import { join } from '../core/joints.js';
 import { csv, createPlotSnapshot, provenance } from '../core/export.js';
 import { cards, control, distributionTraces, download, element, entryId, labels, number, options, plotLayout, stats, summaryCards, tableRows } from '../views/panels.js';
 import { annotationLabel } from '../views/labels.js';
+import { JOINT_PALETTE_OPTIONS, jointColorscale } from '../views/palettes.js';
 import { summary, wrapCircular } from '../math/numeric.js';
 
 const choices = pairs => pairs.map(([id, label]) => ({ id, label }));
@@ -19,7 +20,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       selection: { components: 'relaxed', methods: ['xray'], resolutionMax: 3, contexts: [], functions: [], subtypes: [], structures: [], puckerStates: [], includeEnds: true, pairPolicy: 'exact', interactionFamilies: [], stemOnly: false },
       display: { groupBy: 'base', circularMode: 'wrap_360', sigma: 1.6, normalization: 'probability', fine: true, traceStyle: 'filled' },
       familyId: '', parameterId: 'chi', family2Id: '', parameter2Id: '',
-      joint: { mode: 'identity', endpoint: 'both', type: 'heatmap', colorScale: 'linear', palette: 'YlOrRd', labels: false, contourCount: 12 },
+      joint: { mode: 'identity', endpoint: 'both', type: 'heatmap', colorScale: 'linear', palette: 'hotspots', labels: false, contourCount: 12 },
       survey: { loaded: false, group: 'all', termId: '', opening: 'all', ranking: false, minimum: 20, coordinatesLoaded: false, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all' },
     };
     this.pages = { universe: 0, filtered: 0 }; this.filteredEntries = []; this.contributing = new Set();
@@ -90,7 +91,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     add('jointDisplayControls', 'jointContourLabelsGroup', 'Contour Labels', [['off', 'Off'], ['on', 'On']], joint.labels ? 'on' : 'off', 'labels');
     add('jointDisplayControls', 'jointContourWidthGroup', 'Contour Spacing', [['6', 'Wide'], ['12', 'Standard'], ['24', 'Tight']], String(joint.contourCount), 'contourCount');
     add('jointDisplayControls', 'jointColorScaleGroup', 'Color Scale', [['linear', 'Linear'], ['log', 'Log']], joint.colorScale, 'colorScale');
-    add('jointDisplayControls', 'jointPaletteGroup', 'Color Palette', [['YlOrRd', 'Hotspots'], ['Viridis', 'Viridis'], ['Blues', 'Blues']], joint.palette, 'palette');
+    add('jointDisplayControls', 'jointPaletteGroup', 'Color Palette', JOINT_PALETTE_OPTIONS.map(option => [option.id, option.label]), joint.palette, 'palette');
   }
 
   updateSelectors() {
@@ -290,7 +291,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const snapshot = this.snapshot({ result: { ...result, points: result.points ?? joined.points }, selectionSpec: state.selection, displaySpec: state.display, buildId: this.manifest.build_id, joinSpec: state.joint, provenance: { join_diagnostics: joined.diagnostics }, revision });
     await this.commit(revision, async () => {
       const z = result.z?.map(row => Array.from(row, value => state.joint.colorScale === 'log' ? value > 0 ? Math.log10(value) : null : value)) ?? [];
-      const common = { x: Array.from(result.x ?? []), y: Array.from(result.y ?? []), z, colorscale: state.joint.palette, colorbar: { title: state.joint.colorScale === 'log' ? `log₁₀ ${state.display.normalization}` : state.display.normalization } };
+      const common = { x: Array.from(result.x ?? []), y: Array.from(result.y ?? []), z, colorscale: jointColorscale(state.joint.palette), colorbar: { title: state.joint.colorScale === 'log' ? `log₁₀ ${state.display.normalization}` : state.display.normalization } };
       const contour = { ...common, type: 'contour', ncontours: state.joint.contourCount, contours: { coloring: state.joint.type === 'filled_contour' ? 'fill' : 'none', showlabels: state.joint.labels }, showscale: state.joint.type !== 'heatmap_contour' };
       const traces = state.joint.type === 'heatmap' ? [{ ...common, type: 'heatmap' }] : state.joint.type === 'heatmap_contour' ? [{ ...common, type: 'heatmap' }, contour] : [contour];
       await this.plot(this.$('jointPlot'), traces, plotLayout(xParameter, state.display.normalization, { yaxis: { title: `${yParameter.label ?? yParameter.id}${yParameter.unit ? ` (${yParameter.unit})` : ''}` }, height: 530 }));

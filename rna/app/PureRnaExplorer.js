@@ -3,6 +3,7 @@ import { familyParameters, parameterValue, normalizeParameter } from '../core/re
 import { selectRows, methodKey } from '../core/selection.js';
 import { distribution, histogram2D } from '../core/analysis.js';
 import { join } from '../core/joints.js';
+import { jointSelectionSpecs } from '../core/joint-selection.js';
 import { csv, createPlotSnapshot, provenance } from '../core/export.js';
 import { cards, control, distributionTraces, download, element, entryId, labels, number, options, plotLayout, stats, summaryCards, tableRows } from '../views/panels.js';
 import { annotationLabel } from '../views/labels.js';
@@ -20,7 +21,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       selection: { components: 'relaxed', methods: ['xray'], resolutionMax: 3, contexts: [], functions: [], subtypes: [], structures: [], puckerStates: [], includeEnds: true, pairPolicy: 'exact', interactionFamilies: [], stemOnly: false },
       display: { groupBy: 'base', circularMode: 'wrap_360', sigma: 1.6, normalization: 'probability', fine: true, traceStyle: 'filled' },
       familyId: '', parameterId: 'chi', family2Id: '', parameter2Id: '',
-      joint: { mode: 'identity', endpoint: 'both', type: 'heatmap', colorScale: 'linear', palette: 'hotspots', labels: false, contourCount: 12 },
+      joint: { mode: 'identity', endpoint: 'both', residueContexts: [], residuePuckers: [], type: 'heatmap', colorScale: 'linear', palette: 'hotspots', labels: false, contourCount: 12 },
       survey: { loaded: false, group: 'all', termId: '', opening: 'all', ranking: false, minimum: 20, coordinatesLoaded: false, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all' },
     };
     this.pages = { universe: 0, filtered: 0 }; this.filteredEntries = []; this.contributing = new Set();
@@ -87,11 +88,24 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const add = (parent, id, title, values, selected, key) => control(this.$(parent), { id, title, choices: choices(values), selected, onChange: value => { this.state.joint[key] = key === 'labels' ? value === 'on' : key === 'contourCount' ? Number(value) : value; this.requestRender(); } });
     add('jointControls', 'jointJoinModeGroup', 'Join Mode', [['identity', 'Same observation'], ['relation', 'Pair → Residue']], joint.mode, 'mode');
     add('jointControls', 'jointResidueSideGroup', 'Residue Side', [['both', 'Both'], ['nt1', 'nt1'], ['nt2', 'nt2']], joint.endpoint, 'endpoint');
+    control(this.$('jointControls'), { id: 'jointResidueContextGroup', title: 'Residue Context', choices: choices(['A', 'C', 'G', 'U'].map(base => [base, base])), selected: joint.residueContexts ?? [], multi: true,
+      onChange: value => { this.state.joint.residueContexts = value; this.requestRender(); }, help: 'Independent endpoint selection for the joint plot. No selected base includes all RNA bases; the 1D selection is unchanged.' });
     add('jointDisplayControls', 'jointPlotTypeGroup', 'Plot Type', [['heatmap', 'Heatmap'], ['contour', 'Contour'], ['filled_contour', 'Filled contour'], ['heatmap_contour', 'Heatmap + contour']], joint.type, 'type');
     add('jointDisplayControls', 'jointContourLabelsGroup', 'Contour Labels', [['off', 'Off'], ['on', 'On']], joint.labels ? 'on' : 'off', 'labels');
     add('jointDisplayControls', 'jointContourWidthGroup', 'Contour Spacing', [['6', 'Wide'], ['12', 'Standard'], ['24', 'Tight']], String(joint.contourCount), 'contourCount');
     add('jointDisplayControls', 'jointColorScaleGroup', 'Color Scale', [['linear', 'Linear'], ['log', 'Log']], joint.colorScale, 'colorScale');
     add('jointDisplayControls', 'jointPaletteGroup', 'Color Palette', JOINT_PALETTE_OPTIONS.map(option => [option.id, option.label]), joint.palette, 'palette');
+  }
+
+  updateJointResidueControls(table, state) {
+    const relation = state.joint.mode === 'relation';
+    for (const id of ['jointResidueSideGroup', 'jointResidueContextGroup']) this.$(id).parentElement.hidden = !relation;
+    this.$('jointResiduePuckerGroup')?.parentElement.remove();
+    if (!relation || !table) return;
+    const puckers = [...new Set(rowsOf(table).map(row => row.pucker_class ?? row.pucker_state).filter(value => typeof value === 'string'))].sort();
+    if (!puckers.length) return;
+    control(this.$('jointControls'), { id: 'jointResiduePuckerGroup', title: 'Residue Ribose Pucker', choices: [{ id: 'all', label: 'All puckers' }, ...puckers.map(id => ({ id, label: id }))], selected: state.joint.residuePuckers?.[0] ?? 'all', select: true,
+      onChange: value => { this.state.joint.residuePuckers = value === 'all' ? [] : [value]; this.requestRender(); }, help: 'Select the recorded pucker of the joined residue independently of the paired endpoints. All includes unavailable pucker; DNA BI/BII states are not RNA pucker classes.' });
   }
 
   updateSelectors() {
@@ -269,6 +283,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   }
 
   async renderJoint(state, revision, leftSelection) {
+    this.updateJointResidueControls(null, state);
     if (!state.family2Id || !state.parameter2Id) {
       await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, 'Select a second parameter above to generate a joint distribution.')); this.$('jointStats').replaceChildren(); this.$('jointCsvDownload').disabled = true; this.snapshots.joint = null; });
       return;
@@ -276,9 +291,15 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const rightTable = await this.repository.loadFamily(state.family2Id);
     if (!this.current(revision)) return;
     const xParameter = this.parameter(state.familyId, state.parameterId); const yParameter = this.parameter(state.family2Id, state.parameter2Id);
-    // The second axis has its own context vocabulary; do not apply pair/step labels to residues.
-    const rightSpec = xParameter.level === yParameter.level ? state.selection : { ...state.selection, contexts: [] };
-    const rightSelection = selectRows(rightTable, this.metadata, rightSpec);
+    const specs = jointSelectionSpecs(state.selection, state.joint, xParameter.level, yParameter.level);
+    if (!specs.valid) {
+      await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, specs.message)); this.$('jointStats').replaceChildren(); this.$('jointNote').textContent = specs.message; this.snapshots.joint = null; this.$('jointCsvDownload').disabled = true; });
+      return;
+    }
+    if (specs.left !== state.selection) leftSelection = selectRows(await this.repository.loadFamily(state.familyId), this.metadata, specs.left);
+    if (!this.current(revision)) return;
+    const rightSelection = selectRows(rightTable, this.metadata, specs.right);
+    this.updateJointResidueControls(yParameter.level === 'residue' ? rightTable : xParameter.level === 'residue' ? await this.repository.loadFamily(state.familyId) : null, state);
     let relations = [];
     if (state.joint.mode === 'relation') {
       const relationKey = Object.keys(this.manifest.relations ?? {}).find(key => /pair.*residue|endpoint/.test(key)) ?? (this.manifest.relations?.observations ? 'observations' : null);
@@ -288,7 +309,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const endpoint = { nt1: 'first', nt2: 'second' }[state.joint.endpoint] ?? state.joint.endpoint;
     const joined = join(leftSelection.rows, rightSelection.rows, { type: state.joint.mode, relations, endpoint, xParameter, yParameter, x: xParameter.id, y: yParameter.id });
     const result = histogram2D(joined.points, xParameter, yParameter, { ...state.display, bins: state.display.fine ? 72 : 36 });
-    const snapshot = this.snapshot({ result: { ...result, points: result.points ?? joined.points }, selectionSpec: state.selection, displaySpec: state.display, buildId: this.manifest.build_id, joinSpec: state.joint, provenance: { join_diagnostics: joined.diagnostics }, revision });
+    const snapshot = this.snapshot({ result: { ...result, points: result.points ?? joined.points }, selectionSpec: state.selection, displaySpec: state.display, buildId: this.manifest.build_id, joinSpec: state.joint, provenance: { join_diagnostics: joined.diagnostics, axis_selections: { x: specs.left, y: specs.right } }, revision });
     await this.commit(revision, async () => {
       const z = result.z?.map(row => Array.from(row, value => state.joint.colorScale === 'log' ? value > 0 ? Math.log10(value) : null : value)) ?? [];
       const common = { x: Array.from(result.x ?? []), y: Array.from(result.y ?? []), z, colorscale: jointColorscale(state.joint.palette), colorbar: { title: state.joint.colorScale === 'log' ? `log₁₀ ${state.display.normalization}` : state.display.normalization } };
@@ -299,7 +320,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       this.snapshots.joint = snapshot;
       const points = result.points ?? joined.points; const summary = result.statistics ?? {};
       stats(this.$('jointStats'), [['Matched observations', points.length, 'jointMatchedN'], ['Matched PDBs', new Set(points.map(point => entryId(point.left ?? point))).size, 'jointMatchedPdbs'], ['Pearson r', xParameter.period || yParameter.period ? 'Not applicable' : number(summary.r), 'jointPearsonR'], ['Circular corr.', xParameter.period && yParameter.period ? number(summary.r) : 'Not applicable', 'jointCircularR'], ['R²', xParameter.period || yParameter.period ? 'Not applicable' : number(summary.r2), 'jointRSquared']]);
-      this.$('jointNote').textContent = state.joint.mode === 'relation' ? 'Endpoint observations retain pair, residue, and side identities. Both endpoints are statistically related.' : 'Only identical observation IDs are matched; display labels and sequence text do not establish identity.';
+      this.$('jointNote').textContent = state.joint.mode === 'relation' ? 'Endpoint observations retain pair, residue, and side identities. Residue context and pucker are independent joint filters; both endpoints are statistically related.' : 'Only identical observation IDs are matched; display labels and sequence text do not establish identity.';
       this.$('jointCsvDownload').disabled = false;
     });
   }

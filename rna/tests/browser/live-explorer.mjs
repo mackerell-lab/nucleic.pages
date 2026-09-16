@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { downloadCsv, waitReady, numericText } from './helpers.mjs';
+import { checkPairControls, checkPuckerSurvey } from './rna-specific-controls.mjs';
 
 const workspace = path.resolve(process.env.RNA_WORKSPACE || process.cwd());
 const output = path.resolve(process.env.RNA_BROWSER_OUTPUT || path.join(workspace, 'data/pure_rna/browser_validation'));
@@ -134,6 +135,7 @@ try {
     assert(!incidences.has(key), 'Duplicate endpoint incidence'); incidences.add(key);
   }
   record('Pair-to-residue relation join', { incidences: endpointCsv.rows.length, pairs: new Set(endpointCsv.rows.map(row => row.pair_id)).size });
+  await checkPairControls(page, record);
 
   // Exercise each released family through the ordinary controls. An intentionally
   // unavailable family is not invented to make this sweep pass.
@@ -144,6 +146,11 @@ try {
     await page.selectOption('#familySelect', family.id);
     await waitReady(page);
     await verifyDistribution(`family-${family.id}`);
+    if (['step', 'helical', 'step_position', 'same_strand', 'helix_radius'].includes(family.id)) {
+      const contexts = await page.locator('#contextGroup button').allTextContents();
+      assert(contexts.length && contexts.every(value => value.trim() !== 'Unknown'), `${family.id} lost its step sequence contexts`);
+      record(`Step contexts: ${family.id}`, { contexts });
+    }
   }
   await page.selectOption('#familySelect', 'backbone');
   await waitReady(page);
@@ -162,6 +169,7 @@ try {
   await page.click('#baseGeometryLoad');
   await page.waitForFunction(() => window.rnaExplorer.snapshots.survey?.result?.series?.length > 0, null, { timeout: 120000 });
   await verifyDistribution('survey', '#surveyCsvDownload', 'survey');
+  await checkPuckerSurvey(page, record);
   assert(!fetched(report.responses, coordinatesPaths), 'Scalar request eagerly loaded coordinates');
   await page.selectOption('#surveyOpeningSelect', 'bins');
   await waitReady(page);

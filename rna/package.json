@@ -1,0 +1,10 @@
+{
+  "name": "pure-rna-explorer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build": "node offline/build_dataset.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

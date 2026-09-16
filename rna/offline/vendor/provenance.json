@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "modules": [
+    {
+      "file": "dna_geometry_core.mjs",
+      "source": "scripts/core/dna_geometry_core.mjs",
+      "sha256": "7997066180e70002bcd284a36c6c92e41eeae6edd76235990ca3a1fc8782455b",
+      "changes": "none",
+      "usage": "Read-only mathematical kernels; RNA adapters must override chemistry and DNA policy defaults."
+    },
+    {
+      "file": "base_templates.mjs",
+      "source": "scripts/core/base_templates.mjs",
+      "sha256": "7cce0fc25f6bbb2bf37847f78db197fe1937e22c1cc3db375db61143b97cf7f3",
+      "changes": "none",
+      "usage": "Read-only mathematical kernels; RNA adapters must override chemistry and DNA policy defaults."
+    }
+  ]
+}

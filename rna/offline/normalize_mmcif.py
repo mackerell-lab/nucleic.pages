@@ -108,7 +108,9 @@ def normalize(file):
         "entry", "struct", "exptl", "refine", "em_3d_reconstruction",
         "pdbx_audit_revision_history", "database_PDB_rev", "entity", "entity_poly",
         "entity_poly_seq", "struct_asym", "atom_site", "chem_comp", "struct_conn",
-        "pdbx_entity_nonpoly", "pdbx_entity_branch", "pdbx_entity_branch_list")}
+        "pdbx_entity_nonpoly", "pdbx_entity_branch", "pdbx_entity_branch_list",
+        "pdbx_poly_seq_scheme", "pdbx_struct_mod_residue",
+        "entity_src_gen", "entity_src_nat", "pdbx_entity_src_syn")}
     pdb_id = (data["entry"][0].get("id") if data["entry"] else block.name).upper()
     poly = {row["entity_id"]: row for row in data["entity_poly"]}
     sequences = defaultdict(list)
@@ -117,6 +119,7 @@ def normalize(file):
             "mon_id": row.get("mon_id"), "hetero": row.get("hetero")})
     entities = [{"entity_id": row["id"], "type": row.get("type"),
                  "description": row.get("pdbx_description"),
+                 "source_method": row.get("src_method"),
                  "polymer_type": poly.get(row["id"], {}).get("type"),
                  "nstd_linkage": poly.get(row["id"], {}).get("nstd_linkage"),
                  "nstd_monomer": poly.get(row["id"], {}).get("nstd_monomer"),
@@ -250,6 +253,10 @@ def normalize(file):
                     branched_entities=data["pdbx_entity_branch"],
                     branched_monomers=data["pdbx_entity_branch_list"]),
                 chemical_components=data["chem_comp"],
+                sequence_scheme=data["pdbx_poly_seq_scheme"],
+                modified_residue_annotations=data["pdbx_struct_mod_residue"],
+                entity_sources=dict(engineered=data["entity_src_gen"],
+                    natural=data["entity_src_nat"], synthetic=data["pdbx_entity_src_syn"]),
                 explicit_connections=data["struct_conn"],
                 eligibility=dict(canonical_rna=not reasons, reasons=sorted(set(reasons)), profiles=profiles),
                 coordinate_policy=dict(id="single_deposited_model_v1", scope="deposited_asymmetric_unit",

@@ -115,7 +115,14 @@ try {
   assert(uracil.result.series.every(series => series.rows.every(row => (row.comp_id || row.context) === 'U')));
   assert(uracil.result.coverage.plottedRows > 0, 'Real release has no finite uracil chi values');
 
-  await page.evaluate(async () => { await window.rnaExplorer.setSelection({ contexts: [] }); });
+  await page.click('#resetFilters');
+  await waitReady(page);
+  const resetState = await page.evaluate(() => ({ selection: window.rnaExplorer.state.selection, display: window.rnaExplorer.state.display, joint: window.rnaExplorer.state.joint, family2: window.rnaExplorer.state.family2Id }));
+  assert.deepEqual(resetState.selection.contexts, [], 'Reset retained sequence context');
+  assert.equal(resetState.display.groupBy, 'base', 'Reset retained display grouping');
+  assert.equal(resetState.joint.mode, 'identity', 'Reset retained joint mode');
+  assert.equal(resetState.family2, '', 'Reset retained secondary family');
+  record('Reset RNA filters restores defaults', resetState);
   await waitReady(page);
   await page.selectOption('#family2Select', 'backbone');
   await page.waitForFunction(() => Array.from(document.querySelector('#parameter2Select').options).some(option => option.value === 'delta'));

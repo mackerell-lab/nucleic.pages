@@ -5,6 +5,7 @@ import {gzipSync, gunzipSync} from 'node:zlib';
 import {RESIDUE_PARAMETERS} from './parameter_registry.mjs';
 import {TERM_REGISTRY,publicBaseGeometryConfig} from './survey_terms.mjs';
 import {readJson, sha256} from './output_scope.mjs';
+import {encodeSurveyRows, decodeSurveyRows, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',sugar_torsion:'Sugar Torsions',
@@ -46,7 +47,7 @@ function publicStages(stages) {
 
 /** Spool per-partition JSON so a worldwide survey is never retained as one array. */
 class Partitions {
-  constructor(scope, directory) { this.scope = scope; this.directory = directory; this.files = new Map(); this.coordinateParts=new Map(); }
+  constructor(scope, directory, {columnar = false, buildId = null} = {}) { this.scope = scope; this.directory = directory; this.files = new Map(); this.coordinateParts=new Map(); this.columnar = columnar; this.buildId = buildId; }
   async append(key, rows) {
     if (!rows.length) return;
     if (!/^[a-zA-Z0-9_./-]+$/.test(key) || key.includes('..')) throw new Error('Unsafe partition key');
@@ -78,9 +79,16 @@ class Partitions {
     const descriptors = new Map();
     for (const [key, item] of this.files) {
       if(item.handle) {await item.handle.write(']\n'); await item.handle.close();item.handle=null;}
-      const raw = await fs.readFile(item.file), compressed = gzipSync(raw, {level:9});
+      const raw = await fs.readFile(item.file);
+      let payload = raw, encoding = null;
+      if (this.columnar && key.startsWith('survey/scalars/')) {
+        payload = Buffer.from(JSON.stringify(encodeSurveyRows(JSON.parse(raw), this.buildId)));
+        encoding = SURVEY_COLUMNAR_ENCODING;
+      }
+      const compressed = gzipSync(payload, {level:9});
       const relative = `${key}.json.gz`, output = await this.scope.write(path.join(releaseRoot, relative), compressed);
       descriptors.set(key, {path: relative,row_count:item.count,bytes:compressed.length,uncompressed_bytes:raw.length,sha256:output.sha256,
+        ...(encoding ? {encoding} : {}),
         ...(key.startsWith('survey/coordinates/') ? {entry_ids:[...item.entryIds].sort()} : {})});
     }
     return descriptors;
@@ -109,7 +117,7 @@ export async function buildAssets({build, buildDir, scope, assetsRoot}) {
   metadata.entities = metadata.entities.filter(entity=>entity.type==='polymer' && entity.polymer_type==='polyribonucleotide');
   const decisions = await readJson(path.join(buildDir, 'eligibility/decisions.json'));
   const discovery = await readJson(path.join(buildDir, 'discovery/candidates.json'));
-  const partitions = new Partitions(scope, path.join(buildDir, 'pages_staging/partitions'));
+  const partitions = new Partitions(scope, path.join(buildDir, 'pages_staging/partitions'), {columnar: build.partial === false, buildId: build.build_id});
   const capabilities = [], relationTypes = new Set();
   // Co-locate comparable method/profile entries to let browser metadata filters
   // skip coordinate partitions before network transfer.
@@ -222,7 +230,8 @@ export async function validateRelease(manifestPath) {
     if (!descriptor?.path || path.isAbsolute(descriptor.path) || descriptor.path.split('/').includes('..')) throw new Error('Unsafe asset path');
     const bytes = await fs.readFile(path.join(root,descriptor.path));
     if (sha256(bytes) !== descriptor.sha256) throw new Error(`Asset hash mismatch: ${descriptor.path}`);
-    return JSON.parse((descriptor.path.endsWith('.gz') ? gunzipSync(bytes) : bytes).toString());
+    const data = JSON.parse((descriptor.path.endsWith('.gz') ? gunzipSync(bytes) : bytes).toString());
+    return descriptor.encoding === SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(data) : data;
   };
   const metadata = await load(manifest.metadata), entryIds = new Set(metadata.entries.map(row => row.pdb_id));
   if (entryIds.size !== metadata.entries.length || entryIds.size !== manifest.counts.entries) errors.push('Entry count or uniqueness');

@@ -9,6 +9,7 @@ import {OutputScope,sha256,readJson} from '../offline/output_scope.mjs';
 import {computeResidueObservables} from '../offline/residue_geometry.mjs';
 import {computeGeometry,geometryFamilies} from '../offline/geometry_adapter.mjs';
 import {computeSurvey} from '../offline/survey.mjs';
+import {decodeSurveyRows, encodeSurveyRows, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
 
 test('real RNA numerical output retains release identities and rejects rehashed scientific corruption',async t=>{
   const reference=await readJson(new URL('./reference/rna_x3dna_reference.json',import.meta.url));
@@ -35,13 +36,13 @@ test('real RNA numerical output retains release identities and rejects rehashed 
   await write('tables/geometry/1SDR.json',{families:geometryFamilies(geometry),relations:geometry.relations,
     interactions:reference.graphs['1sdr'].edges,capabilities:{base_pair:'available'}});
   await write('tables/survey/1SDR.json',survey);
-  const build={build_id:'release-integrity',partial:true,stages:{geometry:{status:'complete',
+  const build={build_id:'release-integrity',partial:false,stages:{geometry:{status:'complete',
     signature:'source-signature',runtime:{python:'3',packages:{numpy:'2'}},
     outputs:[{path:'/home/private/geometry.json',bytes:12,sha256:'f'.repeat(64)}]}}};
   await buildAssets({build,buildDir,scope,assetsRoot});
   const root=path.join(assetsRoot,'releases',build.build_id),manifestPath=path.join(root,'manifest.json');
   const manifest=await readJson(manifestPath);
-  const load=async descriptor=>JSON.parse(gunzipSync(await fs.readFile(path.join(root,descriptor.path))));
+  const load=async descriptor=>{const data=JSON.parse(gunzipSync(await fs.readFile(path.join(root,descriptor.path)))); return descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(data) : data;};
   const valid=await validateRelease(manifestPath);
   assert.equal(valid.ok,true,JSON.stringify(valid.errors));
   assert.equal(manifest.coordinate_policy.model_id,undefined);
@@ -70,6 +71,7 @@ test('real RNA numerical output retains release identities and rejects rehashed 
   for(const row of stepRows) assert.equal(row.step_label,geometry.steps.find(step=>step.id===row.id).step_label);
   for(const row of pairRows) assert.deepEqual(row.atom_roles,geometry.pairs.find(pair=>pair.id===row.id).atom_roles);
   const pairDescriptor=manifest.survey.scalars.terms.same_pair_a_n6__u_o4;
+  assert.equal(pairDescriptor.encoding, SURVEY_COLUMNAR_ENCODING);
   for(const row of await load(pairDescriptor)) {
     assert.deepEqual(row.endpoint_entities.map(entity=>entity.entity_id).sort(),['1','2']);
     assert.equal(row.is_terminal_any,row.residue_ids.some(id=>residueIndex.get(id).is_terminal_any));
@@ -107,8 +109,10 @@ test('real RNA numerical output retains release identities and rejects rehashed 
   ];
   for(const [name,descriptor,mutate,pattern] of cases) await t.test(name,async()=>{
     const file=path.join(root,descriptor.path),original=await fs.readFile(file),hash=descriptor.sha256;
-    const rows=JSON.parse(gunzipSync(original));mutate(rows);
-    const changed=gzipSync(Buffer.from(JSON.stringify(rows)));
+    const packed=JSON.parse(gunzipSync(original));
+    const rows=descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(packed) : packed;
+    mutate(rows);
+    const changed=gzipSync(Buffer.from(JSON.stringify(descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? encodeSurveyRows(rows, manifest.build_id) : rows)));
     await fs.writeFile(file,changed);descriptor.sha256=sha256(changed);
     await fs.writeFile(manifestPath,JSON.stringify(manifest));
     const result=await validateRelease(manifestPath);

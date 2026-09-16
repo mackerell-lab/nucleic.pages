@@ -1,3 +1,5 @@
+import { decodeSurveyRows, SURVEY_COLUMNAR_ENCODING } from './survey-codec.js';
+
 /** A session pins one immutable RNA release; rejected requests can be retried. */
 const immutableData = new WeakSet();
 export function isImmutableData(value, seen = new WeakSet()) {
@@ -139,6 +141,7 @@ export class RnaDataRepository {
       if (!descriptor?.path) throw new Error(`RNA survey partition is unavailable: ${kind}/${partition}`);
       const data = await this.readJson(new URL(descriptor.path, this.releaseUrl).href);
       if (data.build_id && data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA survey: ${kind}`);
+      if (kind === 'scalars' && data.encoding === SURVEY_COLUMNAR_ENCODING) return { ...data, rows: decodeSurveyRows(data) };
       return data;
     });
   }

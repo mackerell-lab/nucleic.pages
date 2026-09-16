@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test tests/*.test.mjs tests/reference/*.test.mjs",
+    "test:coordinates": "../../data/pure_rna/venv/bin/python -m unittest discover -s tests -p test_normalize.py",
     "build": "node offline/build_dataset.mjs"
   },
   "engines": { "node": ">=20" }

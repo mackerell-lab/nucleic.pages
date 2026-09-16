@@ -1,0 +1,18 @@
+{
+  "sources": {
+    "tmp/x3dna-v2.4/config/Atomic_A.pdb": {
+      "sha256": "0484e32721a32e0fc66e5699d363839b9ec01b17bbc343762ccc302624fc6207"
+    },
+    "tmp/x3dna-v2.4/config/Atomic_C.pdb": {
+      "sha256": "ba314b0808c0ca76b3de366e1cb98b049785b32caf2fc88fb97cf9248db2c43a"
+    },
+    "tmp/x3dna-v2.4/config/Atomic_G.pdb": {
+      "sha256": "221a36b43b456b18901810bf1cb8eb482778912cf92ca57db9a885884a8a933d"
+    },
+    "tmp/x3dna-v2.4/config/Atomic_U.pdb": {
+      "sha256": "cb4f7c857efb13ba572f63002691cca61b6f73f5a9924314842da9280145027e"
+    }
+  },
+  "transformation": "Retain named ring coordinates only; no substitution or fitting.",
+  "citation": "https://doi.org/10.1006/jmbi.2001.4987"
+}

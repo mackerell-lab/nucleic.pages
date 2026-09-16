@@ -15,7 +15,7 @@ test('real RNA numerical output retains release identities and rejects rehashed 
   const entry=structuredClone(reference.entries.find(row=>row.pdb_id==='1sdr'));
   entry.pdb_id='1SDR';
   for(const residue of entry.residues) Object.assign(residue,{pdb_id:entry.pdb_id,
-    entity_id:['A','C'].includes(residue.label_asym_id)?'1':'2',model_id:'30'});
+    entity_id:['A','C'].includes(residue.label_asym_id)?'1':'2',model_id:'30',ins_code:'K',altloc:'B'});
   const residues=computeResidueObservables(entry);
   const geometry=computeGeometry(entry,reference.graphs['1sdr']);
   const survey=computeSurvey(entry,{pairs:geometry.pairs});
@@ -31,6 +31,7 @@ test('real RNA numerical output retains release identities and rejects rehashed 
   await write('eligibility/decisions.json',[{pdb_id:entry.pdb_id,accepted:true,reasons:[],normalized_path:'/home/private/identity.json'}]);
   await write('discovery/candidates.json',{source_count:1,selected_count:1});
   await write('tables/residue/1SDR.json',residues);
+  await write('identity/1SDR.json',entry);
   await write('tables/geometry/1SDR.json',{families:geometryFamilies(geometry),relations:geometry.relations,
     interactions:reference.graphs['1sdr'].edges,capabilities:{base_pair:'available'}});
   await write('tables/survey/1SDR.json',survey);
@@ -54,6 +55,10 @@ test('real RNA numerical output retains release identities and rejects rehashed 
   const stepRows=await load(manifest.families.find(row=>row.id==='step'));
   const pairRows=await load(manifest.families.find(row=>row.id==='base_pair'));
   const residueIndex=new Map(residues.map(row=>[row.id,row]));
+  for(const row of await load(manifest.families.find(row=>row.id==='backbone'))) {
+    assert.equal(row.residue_id,row.id);
+    assert.equal(row.insertion_code,'K');assert.equal(row.altloc,'B');
+  }
   for(const row of [...stepRows,...pairRows]) {
     assert.equal(row.model_id,'30');
     assert.equal(row.is_terminal_any,row.residue_ids.some(id=>residueIndex.get(id).is_terminal_any));
@@ -74,8 +79,14 @@ test('real RNA numerical output retains release identities and rejects rehashed 
   for(const row of await load(residueDescriptor)) {
     assert.equal(row.pucker_class,residueIndex.get(row.residue_id).pucker_class ?? null);
     assert.deepEqual(row.pucker_classes,[row.pucker_class]);
+    assert.equal(row.insertion_code,'K');assert.equal(row.altloc,'B');
   }
   const coordinateDescriptor=Object.values(manifest.survey.coordinates.groups)[0].partitions[0];
+  const residueCoordinateGroup=Object.values(manifest.survey.coordinates.groups).find(group=>group.label.includes('rna standard base'));
+  for(const row of await load(residueCoordinateGroup.partitions[0])) {
+    assert.equal(row.residue_id,row.target_residue_id);
+    assert.equal(row.insertion_code,'K');assert.equal(row.altloc,'B');
+  }
   const pairCoordinateGroup=Object.values(manifest.survey.coordinates.groups).find(group=>group.label.includes('cytosine'));
   assert.ok(pairCoordinateGroup);
   for(const row of await load(pairCoordinateGroup.partitions[0])) {

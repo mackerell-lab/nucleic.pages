@@ -13,7 +13,7 @@ const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',su
   helical:'Helical',step_position:'Step Position',same_strand:'Same Strand',helix_radius:'Helix Radius'};
 
 function slimRow(row, parameters) {
-  const allowed = ['id','pdb_id','entry_id','entity_id','label_asym_id','label_seq_id','auth_asym_id','auth_seq_id','comp_id',
+  const allowed = ['id','residue_id','pdb_id','entry_id','entity_id','label_asym_id','label_seq_id','auth_asym_id','auth_seq_id','insertion_code','comp_id',
     'model_id','altloc','pucker_class','pucker_classes','sequence_context','pair_label','pair_type','interaction_family','family','residue1_id',
     'residue2_id','pair1_id','pair2_id','residue_ids','entity_ids','endpoint_entities','chain_ids','is_terminal','is_terminal_any','quality_flags',
     'step_label','frame_convention','atom_roles','near','alternative','stem_eligible','topology','is_terminal_5p','is_terminal_3p'];
@@ -115,7 +115,17 @@ export async function buildAssets({build, buildDir, scope, assetsRoot}) {
   // skip coordinate partitions before network transfer.
   const assetEntries=[...metadata.entries].sort((a,b)=>`${a.method}|${a.profiles.relaxed}|${a.pdb_id}`.localeCompare(`${b.method}|${b.profiles.relaxed}|${b.pdb_id}`));
   for (const entry of assetEntries) {
-    const residues = await readJson(path.join(buildDir, 'tables/residue', `${entry.pdb_id}.json`));
+    const normalized=await readJson(path.join(buildDir,'identity',`${entry.pdb_id}.json`));
+    const sourceResidues=new Map(normalized.residues.map(row=>[row.id,row]));
+    const sourceIdentity=id=>{
+      const source=sourceResidues.get(id);
+      if(!source) throw new Error(`Missing normalized residue identity: ${id}`);
+      return {residue_id:id,entity_id:source.entity_id,label_asym_id:source.label_asym_id,label_seq_id:source.label_seq_id,
+        auth_asym_id:source.auth_asym_id,auth_seq_id:source.auth_seq_id,insertion_code:source.ins_code ?? null,
+        altloc:source.altloc ?? '',model_id:source.model_id};
+    };
+    const residues = (await readJson(path.join(buildDir, 'tables/residue', `${entry.pdb_id}.json`)))
+      .map(row=>({...row,...sourceIdentity(row.id)}));
     const residueIndex = new Map(residues.map(row => [row.id,row]));
     const geometry = await readJson(path.join(buildDir, 'tables/geometry', `${entry.pdb_id}.json`));
     const pairIndex = new Map((geometry.families?.base_pair ?? []).map(row=>[row.id,row]));
@@ -127,7 +137,8 @@ export async function buildAssets({build, buildDir, scope, assetsRoot}) {
       if(!ids.length || ids.some(id=>!residueIndex.has(id))) throw new Error(`Unknown observation endpoints: ${row.id}`);
       const endpoints=ids.map(id=>residueIndex.get(id));
       const entityIds = [...new Set(endpoints.map(residue=>residue.entity_id))];
-      return {...row,pdb_id:entry.pdb_id,model_id:row.model_id ?? entry.selected_model_id,
+      return {...row,...(endpoints.length===1 ? sourceIdentity(ids[0]) : {}),
+        pdb_id:entry.pdb_id,model_id:row.model_id ?? entry.selected_model_id,
         residue_ids:ids,is_terminal_any:endpoints.some(residue=>residue.is_terminal_any===true),
         pucker_classes:endpoints.map(residue=>residue.pucker_class ?? null),
         ...(endpoints.length===1 ? {pucker_class:endpoints[0].pucker_class ?? null} : {}),

@@ -1,7 +1,7 @@
 {
   "schema_version": "rna-explorer-1",
   "molecule_type": "RNA",
-  "build_id": "full_columnar_20260916",
-  "manifest": "releases/full_columnar_20260916/manifest.json",
+  "build_id": "full_columnar_coord_20260916",
+  "manifest": "releases/full_columnar_coord_20260916/manifest.json",
   "partial": false
 }

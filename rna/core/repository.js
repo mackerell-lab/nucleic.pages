@@ -1,4 +1,4 @@
-import { decodeSurveyRows, SURVEY_COLUMNAR_ENCODING } from './survey-codec.js';
+import { decodeCoordinateRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from './survey-codec.js';
 
 /** A session pins one immutable RNA release; rejected requests can be retried. */
 const immutableData = new WeakSet();
@@ -176,11 +176,12 @@ export class RnaDataRepository {
       const data = await request;
       if (signal?.aborted) throw signal.reason || new Error('RNA coordinate loading was cancelled');
       if (data.build_id && data.build_id !== manifest.build_id) throw new Error('Cross-build RNA coordinate partition');
-      const sourceRows = Array.isArray(data) ? data : data.rows;
+      const sourceRows = data.encoding === COORDINATE_COLUMNAR_ENCODING ? decodeCoordinateRows(data) : (Array.isArray(data) ? data : data.rows);
       if (!Array.isArray(sourceRows)) throw new Error('RNA coordinate partition requires rows');
       if (partition.row_count != null && partition.row_count !== sourceRows.length) throw new Error('RNA coordinate partition row count mismatch');
       const rows = selected ? sourceRows.filter(row => selected.has(String(row.pdb_id || row.accession || row.entry_id || '').toUpperCase())) : sourceRows;
-      yield deepFreeze({ ...(Array.isArray(data) ? {} : data), rows, group_key: groupKey, build_id: manifest.build_id,
+      const { columns, missing, ...metadata } = Array.isArray(data) ? {} : data;
+      yield deepFreeze({ ...metadata, rows, group_key: groupKey, build_id: manifest.build_id,
         partition_path: partition.path, source_row_count: sourceRows.length, selected_row_count: rows.length });
     }
   }

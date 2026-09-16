@@ -5,7 +5,7 @@ import {gzipSync, gunzipSync} from 'node:zlib';
 import {RESIDUE_PARAMETERS} from './parameter_registry.mjs';
 import {TERM_REGISTRY,publicBaseGeometryConfig} from './survey_terms.mjs';
 import {readJson, sha256} from './output_scope.mjs';
-import {encodeSurveyRows, decodeSurveyRows, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
+import {encodeCoordinateRows, encodeSurveyRows, decodeCoordinateRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',sugar_torsion:'Sugar Torsions',
@@ -84,10 +84,13 @@ class Partitions {
       if (this.columnar && key.startsWith('survey/scalars/')) {
         payload = Buffer.from(JSON.stringify(encodeSurveyRows(JSON.parse(raw), this.buildId)));
         encoding = SURVEY_COLUMNAR_ENCODING;
+      } else if (this.columnar && key.startsWith('survey/coordinates/')) {
+        payload = Buffer.from(JSON.stringify(encodeCoordinateRows(JSON.parse(raw), this.buildId)));
+        encoding = COORDINATE_COLUMNAR_ENCODING;
       }
       const compressed = gzipSync(payload, {level:9});
       const relative = `${key}.json.gz`, output = await this.scope.write(path.join(releaseRoot, relative), compressed);
-      descriptors.set(key, {path: relative,row_count:item.count,bytes:compressed.length,uncompressed_bytes:raw.length,sha256:output.sha256,
+      descriptors.set(key, {path: relative,row_count:item.count,bytes:compressed.length,uncompressed_bytes:payload.length,sha256:output.sha256,
         ...(encoding ? {encoding} : {}),
         ...(key.startsWith('survey/coordinates/') ? {entry_ids:[...item.entryIds].sort()} : {})});
     }
@@ -231,7 +234,9 @@ export async function validateRelease(manifestPath) {
     const bytes = await fs.readFile(path.join(root,descriptor.path));
     if (sha256(bytes) !== descriptor.sha256) throw new Error(`Asset hash mismatch: ${descriptor.path}`);
     const data = JSON.parse((descriptor.path.endsWith('.gz') ? gunzipSync(bytes) : bytes).toString());
-    return descriptor.encoding === SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(data) : data;
+    if (descriptor.encoding === SURVEY_COLUMNAR_ENCODING) return decodeSurveyRows(data);
+    if (descriptor.encoding === COORDINATE_COLUMNAR_ENCODING) return decodeCoordinateRows(data);
+    return data;
   };
   const metadata = await load(manifest.metadata), entryIds = new Set(metadata.entries.map(row => row.pdb_id));
   if (entryIds.size !== metadata.entries.length || entryIds.size !== manifest.counts.entries) errors.push('Entry count or uniqueness');

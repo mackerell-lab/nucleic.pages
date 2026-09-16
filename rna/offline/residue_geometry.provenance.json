@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "implementation": "RNA-specific atom registry and observables",
+  "sources": [
+    {
+      "path": "scripts/core/dna_pdb_core.mjs",
+      "sha256": "48c07290c4e7dcca348f3a2c6e599b36058e8d394ce5594b3e2a7002d447ec8c"
+    },
+    {
+      "path": "scripts/core/dna_geometry_core.mjs",
+      "sha256": "7997066180e70002bcd284a36c6c92e41eeae6edd76235990ca3a1fc8782455b"
+    },
+    {
+      "path": "tmp/x3dna-v2.4/src/ana_fncs.c",
+      "sha256": "b1b5f94c81664d7b6d33d2b4a89aa171811cae865f7dbb2fa7e12642e9c923a6"
+    },
+    {
+      "path": "data/rna_information_research_20260915/dna_parameter_rna_disposition.json",
+      "sha256": "69113aacff020bc5f0c39251f65ab256489f5225612811eb083774755329f3a3"
+    }
+  ],
+  "reviewed_x3dna_symbols": [
+    "get_nt_torsion",
+    "get_ss_Zp_Dp"
+  ],
+  "source_derived_symbols": [
+    "dihedralSigned",
+    "bondAngle",
+    "pointToLineDistance",
+    "computePucker"
+  ],
+  "intentional_changes": [
+    "Actual A/C/G/U chemistry, no U-to-T alias",
+    "Explicit selected-coordinate connected links and topology segments",
+    "Per-parameter atom coverage and separate availability statuses",
+    "Stable pseudorotation amplitude hypot and undefined phase at zero amplitude",
+    "No DNA BI/BII/BIII or ABI classification",
+    "Four explicitly heavy-atom ribose O2-prime metrics",
+    "Collinear base-fit rejection; preserve partial-ring fit diagnostics"
+  ],
+  "validation": "tests/residue_geometry.test.mjs plus independent x3DNA reference tests supplied separately"
+}

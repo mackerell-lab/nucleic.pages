@@ -4,11 +4,11 @@ import { selectRows, methodKey } from '../core/selection.js';
 import { distribution, histogram2D } from '../core/analysis.js';
 import { join } from '../core/joints.js';
 import { jointSelectionSpecs } from '../core/joint-selection.js';
+import { rankSurveyContexts, orderSurveyRanks, surveyContext } from '../core/survey-ranking.js';
 import { csv, createPlotSnapshot, provenance } from '../core/export.js';
 import { cards, control, distributionTraces, download, element, entryId, labels, number, options, plotLayout, stats, summaryCards, tableRows } from '../views/panels.js';
 import { annotationLabel } from '../views/labels.js';
 import { JOINT_PALETTE_OPTIONS, jointColorscale } from '../views/palettes.js';
-import { summary, wrapCircular } from '../math/numeric.js';
 
 const choices = pairs => pairs.map(([id, label]) => ({ id, label }));
 const rowsOf = table => Array.isArray(table) ? table : table?.rows ?? [];
@@ -22,7 +22,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       display: { groupBy: 'base', circularMode: 'wrap_360', sigma: 1.6, normalization: 'probability', fine: true, traceStyle: 'filled' },
       familyId: '', parameterId: 'chi', family2Id: '', parameter2Id: '',
       joint: { mode: 'identity', endpoint: 'both', residueContexts: [], residuePuckers: [], type: 'heatmap', colorScale: 'linear', palette: 'hotspots', labels: false, contourCount: 12 },
-      survey: { loaded: false, group: 'all', termId: '', opening: 'all', ranking: false, minimum: 20, coordinatesLoaded: false, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all' },
+      survey: { loaded: false, group: 'all', contexts: [], termId: '', opening: 'all', ranking: false, minimum: 20, coordinatesLoaded: false, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all' },
     };
     this.pages = { universe: 0, filtered: 0 }; this.filteredEntries = []; this.contributing = new Set();
     this.rankingCache = new Map();
@@ -135,8 +135,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.listen(this.$('plotProvenanceDownload'), 'click', () => { if (this.snapshots.distribution) download(`pure-rna-${this.manifest.build_id}-provenance.json`, provenance(this.snapshots.distribution), 'application/json'); });
     this.listen(this.$('baseGeometryLoad'), 'click', async () => { this.state.survey.loaded = true; this.$('baseGeometryBody').hidden = false; await this.requestRender(); });
     this.listen(this.$('coordinatesLoad'), 'click', async () => { this.state.survey.coordinatesLoaded = true; this.$('coordinateBody').hidden = false; await this.requestRender(); });
-    this.listen(this.$('surveyGroupSelect'), 'change', event => { this.state.survey.group = event.target.value; this.state.survey.termId = ''; this.requestRender(); });
-    this.listen(this.$('baseGeometryTermSelect'), 'change', event => { this.state.survey.termId = event.target.value; this.requestRender(); });
+    this.listen(this.$('surveyGroupSelect'), 'change', event => { this.state.survey.group = event.target.value; this.state.survey.termId = ''; this.state.survey.contexts = []; this.requestRender(); });
+    this.listen(this.$('baseGeometryTermSelect'), 'change', event => { this.state.survey.termId = event.target.value; this.state.survey.contexts = []; this.requestRender(); });
     this.listen(this.$('coordinateContextSelect'), 'change', event => { this.state.survey.coordinateContext = event.target.value; this.requestRender(); });
     this.listen(this.$('coordinateGroupSelect'), 'change', event => { this.state.survey.coordinateGroup = event.target.value; this.state.survey.coordinateContext = 'all'; this.requestRender(); });
     this.listen(this.$('coordinateOpeningSelect'), 'change', event => { this.state.survey.coordinateOpening = event.target.value; this.requestRender(); });
@@ -334,7 +334,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const table = await this.repository.loadSurveyScalars(term.id);
     if (!this.current(revision)) return;
     const normalized = this.surveyRows(table, term);
-    const selection = selectRows({ rows: normalized }, this.metadata, { ...state.selection, contexts: [] });
+    const selection = selectRows({ rows: normalized }, this.metadata, { ...state.selection, contexts: state.survey.contexts ?? [] });
     const parameter = normalizeParameter(term);
     let termRows = selection.rows.filter(row => (row.term_id ?? row.term) === term.id);
     let openingIndex = null;
@@ -344,13 +344,17 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     if (state.survey.opening === 'bins') termRows = this.openingIncidences(termRows, openingIndex);
     const display = { ...this.displaySpec(state.display, parameter), groupBy: state.survey.opening === 'bins' ? 'opening_bin' : state.display.groupBy };
     const result = this.decorate(distribution(termRows, parameter, display));
-    const snapshot = this.snapshot({ result, selectionSpec: state.selection, buildId: this.manifest.build_id, displaySpec: display, provenance: { survey_term: term.id, opening_conditioning: state.survey.opening, opening_bins: this.manifest.survey.opening_bins, incidence_policy: state.survey.opening === 'bins' ? 'one row per explicit residue-pair incidence' : 'one row per residue or pair observable' } });
+    const snapshot = this.snapshot({ result, selectionSpec: { ...state.selection, contexts: state.survey.contexts ?? [] }, buildId: this.manifest.build_id, displaySpec: display, provenance: { survey_term: term.id, survey_contexts: state.survey.contexts ?? [], opening_conditioning: state.survey.opening, opening_bins: this.manifest.survey.opening_bins, incidence_policy: state.survey.opening === 'bins' ? 'one row per explicit residue-pair incidence' : 'one row per residue or pair observable' } });
     await this.commit(revision, async () => {
       await this.plot(this.$('baseGeometryPlot'), distributionTraces(result, state.display), plotLayout(parameter, state.display.normalization));
       if (!this.current(revision)) return;
       this.snapshots.survey = snapshot;
       options(this.$('surveyGroupSelect'), [{ id: 'all', label: 'All groups' }, ...groups.map(id => ({ id, label: annotationLabel(id) }))], state.survey.group);
       options(this.$('baseGeometryTermSelect'), available, term.id); this.state.survey.termId = term.id;
+      this.$('surveyContextControls').replaceChildren();
+      const contexts = [...new Set([...normalized.map(surveyContext), ...(state.survey.contexts ?? [])])].sort();
+      control(this.$('surveyContextControls'), { id: 'baseGeometryContextGroup', title: 'Survey Context', choices: contexts.map(id => ({ id, label: id })), selected: state.survey.contexts ?? [], multi: true,
+        onChange: contexts => { this.state.survey.contexts = contexts; this.requestRender(); }, help: 'Independent survey context selection. No selected context includes all recorded contexts; global entry and annotation filters still apply.' });
       this.$('surveyDefinition').textContent = this.definition(parameter);
       stats(this.$('baseGeometryStats'), [['Filtered scalar rows', selection.rows.length, 'baseGeometryScalarRows'], ['Survey terms', terms.length, 'baseGeometryRankRows'], ['Plotted term rows', termRows.filter(row => parameterValue(row, parameter) !== null).length, 'baseGeometrySelectedRows']]);
       this.$('surveyCoverageBody').replaceChildren(...available.map(item => {
@@ -407,7 +411,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   }
   async renderOpeningRanking(terms, state, revision, openingIndex) {
     const ranks = []; this.$('surveyRankingLoad').disabled = true;
-    const selectionKey = JSON.stringify(state.selection);
+    const selectionKey = JSON.stringify({ ...state.selection, contexts: state.survey.contexts ?? [] });
     if (!this.rankingCache.has(selectionKey)) {
       if (this.rankingCache.size >= 5) this.rankingCache.delete(this.rankingCache.keys().next().value);
       this.rankingCache.set(selectionKey, new Map());
@@ -417,26 +421,25 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       for (let index = 0; index < terms.length; index++) {
         if (!this.current(revision)) return;
         const term = terms[index];
-        if (cached.has(term.id)) { ranks.push(cached.get(term.id)); continue; }
+        if (cached.has(term.id)) { ranks.push(...cached.get(term.id)); continue; }
         const table = await this.repository.loadSurveyScalars(term.id);
-        const selected = selectRows(this.surveyRows(table, term), this.metadata, { ...state.selection, contexts: [] });
+        const selected = selectRows(this.surveyRows(table, term), this.metadata, { ...state.selection, contexts: state.survey.contexts ?? [] });
         const incidences = this.openingIncidences(selected.rows, openingIndex);
-        const groups = ['small', 'middle', 'large'].map(bin => incidences.filter(row => row.opening_bin === bin).map(row => parameterValue(row, term)).filter(value => value !== null));
-        const means = groups.map(values => summary(values, { period: term.period }).mean);
-        const difference = means[0] !== null && means[2] !== null ? term.period ? wrapCircular(means[2] - means[0] + term.period / 2, term.period) - term.period / 2 : means[2] - means[0] : null;
-        const rank = { term, counts: groups.map(values => values.length), means, difference };
-        ranks.push(rank); cached.set(term.id, rank);
+        const termRanks = rankSurveyContexts(incidences, term);
+        ranks.push(...termRanks); cached.set(term.id, termRanks);
         if (term.id !== this.lastSurveyTerm) this.repository.releaseSurvey?.('scalars', term.id);
         if (!this.current(revision)) return;
         this.$('surveyRankingLoad').textContent = `Computing ${index + 1} / ${terms.length}…`;
       }
       await this.commit(revision, () => {
-        ranks.sort((a, b) => (Number.isFinite(b.difference) ? Math.abs(b.difference) : -Infinity) - (Number.isFinite(a.difference) ? Math.abs(a.difference) : -Infinity));
-        this.$('baseGeometryRankingBody').replaceChildren(...ranks.map(rank => {
-          const row = element('tr'); const label = element('td'); const button = element('button', { type: 'button', className: 'toggle-btn' }, rank.term.label);
-          button.addEventListener('click', () => { this.state.survey.termId = rank.term.id; this.state.survey.opening = 'bins'; this.$('surveyOpeningSelect').value = 'bins'; this.requestRender(); }); label.append(button);
-          row.append(label, ...[rank.counts.join(' / '), ...rank.means.map(number), number(rank.difference), rank.counts.every(n => n >= state.survey.minimum) ? 'All bins meet minimum' : 'Insufficient per-bin coverage'].map(value => element('td', {}, value))); return row;
+        const ordered = orderSurveyRanks(ranks, state.survey.minimum);
+        this.surveyRanks = ordered;
+        this.$('baseGeometryRankingBody').replaceChildren(...ordered.map(rank => {
+          const row = element('tr', { 'data-term': rank.term.id, 'data-context': rank.context, 'data-sufficient': String(rank.sufficient) }); const label = element('td'); const button = element('button', { type: 'button', className: 'toggle-btn' }, rank.term.label);
+          button.addEventListener('click', () => { this.state.survey.termId = rank.term.id; this.state.survey.contexts = [rank.context]; this.state.survey.opening = 'bins'; this.$('surveyOpeningSelect').value = 'bins'; this.requestRender(); }); label.append(button);
+          row.append(label, ...[rank.context, rank.counts.join(' / '), ...rank.means.map(number), number(rank.difference), rank.trend, rank.sufficient ? 'All bins meet minimum' : 'Insufficient per-bin coverage'].map(value => element('td', {}, value))); return row;
         }));
+        if (!ordered.length) { const row = element('tr'); row.append(element('td', { colspan: '9' }, 'No finite term/context observations in the selected opening bins.')); this.$('baseGeometryRankingBody').append(row); }
       });
     } finally { this.$('surveyRankingLoad').disabled = false; this.$('surveyRankingLoad').textContent = 'Recompute term ranking'; }
   }

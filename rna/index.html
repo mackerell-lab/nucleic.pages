@@ -78,13 +78,15 @@
         <p id="surveyAvailability" class="rna-note">Checking available survey data…</p>
         <div id="baseGeometryBody" hidden>
           <div class="controls"><label>Survey group<select id="surveyGroupSelect"></select></label><label>Selected term<select id="baseGeometryTermSelect"></select></label><label>Opening conditioning<select id="surveyOpeningSelect"><option value="all">All residue observations</option><option value="bins">By supported pair opening</option></select></label></div>
+          <div id="surveyContextControls" class="joint-controls"></div>
           <p id="surveyDefinition" class="rna-definition"></p>
           <div id="baseGeometryStats" class="stats-strip"></div>
           <div id="baseGeometryPlot" class="plot-panel base-geometry-plot"></div>
           <div class="collapse-actions"><button type="button" id="surveyCsvDownload" class="toggle-btn" disabled>Download survey CSV</button></div>
           <div class="panel-subhead"><div><h3>Opening-Binned Term Ranking</h3><p>Compare supported pair-opening contexts using explicit residue–interaction links. Each incidence preserves its interaction identity; unpaired residues remain in the unconditional survey.</p><p id="baseGeometryBinNote" class="rna-note"></p></div><button type="button" id="surveyRankingLoad" class="toggle-btn">Compute term ranking</button></div>
           <div id="surveyRankingControls" class="joint-controls"></div>
-          <div class="table-shell compact-table-shell"><table class="data-table"><thead><tr><th>Term</th><th>n small / middle / large</th><th>Mean small</th><th>Mean middle</th><th>Mean large</th><th>Large − small</th><th>Coverage</th></tr></thead><tbody id="baseGeometryRankingBody"></tbody></table></div>
+          <p class="rna-note">Each term and context is ranked separately. Rows meeting the minimum in every bin come first, followed by the absolute large-minus-small difference. Circular differences and trends use the shortest signed angular change.</p>
+          <div class="table-shell compact-table-shell"><table class="data-table"><thead><tr><th>Term</th><th>Context</th><th>n small / middle / large</th><th>Mean small</th><th>Mean middle</th><th>Mean large</th><th>Large − small</th><th>Trend</th><th>Coverage</th></tr></thead><tbody id="baseGeometryRankingBody"></tbody></table></div>
           <div class="panel-subhead"><h3>Survey Coverage</h3><p>Finite and unavailable values are counted separately for each atom-defined term.</p></div>
           <div class="table-shell compact-table-shell"><table class="data-table"><thead><tr><th>Term</th><th>Atoms</th><th>Finite</th><th>Unavailable</th></tr></thead><tbody id="surveyCoverageBody"></tbody></table></div>
         </div>

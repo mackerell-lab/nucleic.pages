@@ -1,0 +1,24 @@
+[data-explorer="rna"] .rna-hero { display:flex; align-items:baseline; justify-content:space-between; gap:18px; flex-wrap:wrap; }
+[data-explorer="rna"] .rna-sibling-link { color:var(--accent); font-size:15px; text-decoration:none; }
+[data-explorer="rna"] .rna-sibling-link:hover { text-decoration:underline; }
+[data-explorer="rna"] .rna-status { padding:12px 16px; margin:0 0 18px; border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--muted); }
+[data-explorer="rna"] .rna-status:empty { display:none; }
+[data-explorer="rna"] .rna-status[data-state="error"] { color:#8c3b2a; border-color:#8c3b2a; }
+[data-explorer="rna"] .rna-note, [data-explorer="rna"] .rna-definition { font-size:14px; line-height:1.5; color:var(--muted); }
+[data-explorer="rna"] .rna-definition { padding:10px 12px; background:#fffdf7; border-radius:10px; border:1px solid var(--line); }
+[data-explorer="rna"] .rna-definition:empty { display:none; }
+[data-explorer="rna"] .rna-details { margin:14px 0; line-height:1.6; }
+[data-explorer="rna"] .rna-details summary { cursor:pointer; color:var(--accent); }
+[data-explorer="rna"] .rna-details pre { overflow:auto; max-height:420px; font:12px/1.5 monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+[data-explorer="rna"] input[type="search"] { border:1px solid var(--line); border-radius:10px; padding:8px 10px; background:#fffdf7; color:var(--ink); font:inherit; }
+[data-explorer="rna"] .rna-control-select { max-width:100%; }
+[data-explorer="rna"] .rna-tag { display:inline-block; margin:2px 4px 2px 0; padding:2px 6px; border:1px solid var(--line); border-radius:6px; font-size:12px; }
+[data-explorer="rna"] .rna-overview-button { color:inherit; font:inherit; text-align:left; cursor:pointer; width:100%; }
+[data-explorer="rna"] .rna-overview-button:hover { border-color:var(--accent); }
+[data-explorer="rna"] .rna-mini-plot { height:150px; }
+[data-explorer="rna"] .rna-empty { padding:28px 16px; text-align:center; color:var(--muted); }
+[data-explorer="rna"] button:disabled { opacity:.5; cursor:default; }
+[data-explorer="rna"] a { color:var(--accent); }
+[data-explorer="rna"] [hidden] { display:none !important; }
+[data-explorer="rna"] .rna-definition code { font-size:12px; }
+@media (max-width:600px) { [data-explorer="rna"] .collapse-actions { width:100%; } [data-explorer="rna"] .rna-sibling-link { margin-top:6px; } }

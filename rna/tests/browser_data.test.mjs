@@ -157,6 +157,21 @@ test('Explicit endpoint joins preserve incidences and count equal-pair weights',
   assert.deepEqual(result.points.map(point => point.endpoint_role), ['first', 'second']);
 });
 
+test('Pipeline multiplexed relation schema joins typed endpoints in either axis direction', () => {
+  const pairs = [row('p1', 2)], residues = [row('r1', 4), row('r2', 6)];
+  const relations = [
+    { id: 'p1/residue/1', kind: 'pair_residue', pair_id: 'p1', residue_id: 'r1', side: 1 },
+    { id: 'p1/residue/2', kind: 'pair_residue', pair_id: 'p1', residue_id: 'r2', side: 2 },
+    { id: 'step1/pair/1', kind: 'step_pair', step_id: 'step1', pair_id: 'p1', side: 1 },
+  ];
+  const forward = join(pairs, residues, { type: 'relation', relations, xParameter: { level: 'pair' }, yParameter: { level: 'residue' } });
+  assert.equal(forward.points.length, 2);
+  assert.deepEqual(forward.points.map(point => point.endpoint_role), ['first', 'second']);
+  const reverse = join(residues, pairs, { type: 'relation', relations, xParameter: { level: 'residue' }, yParameter: { level: 'pair' } });
+  assert.equal(reverse.points.length, 2);
+  assert.equal(reverse.points[0].left_id, 'r1');
+});
+
 test('2D smoothed density has unit mass and circular correlation is seam invariant', () => {
   const input = [{ x: 355, y: 5 }, { x: 0, y: 10 }, { x: 5, y: 15 }];
   const result = histogram2D(input, torsion, torsion, { bins: 12, normalization: 'density', sigma: 1.2 });
@@ -219,4 +234,108 @@ test('Survey term loads stay separate from coordinates and can release cached pa
   assert.equal(calls.length, 3);
   await repository.loadSurveyCoordinates('U');
   assert.equal(calls.length, 4);
+});
+
+test('Repository fetch preserves the browser global receiver', async () => {
+  const repository = new RnaDataRepository({ manifestUrl: 'https://example.org/manifest.json', fetchImpl: function () {
+    assert.equal(this, globalThis);
+    return Promise.resolve(new Response(JSON.stringify({ schema_version: 'rna-explorer-1', molecule_type: 'RNA', families: [] })));
+  } });
+  assert.equal((await repository.loadManifest()).molecule_type, 'RNA');
+});
+
+function coordinateRepository() {
+  const calls = [];
+  const assets = {
+    'manifest.json': { schema_version: 'rna-explorer-1', molecule_type: 'RNA', build_id: 'a', families: [],
+      survey: { coordinates: { groups: { G: { label: 'Guanine', row_count: 3, partitions: [
+        { path: 'ab.json', row_count: 2, entry_ids: ['1AAA', '1BBB'] },
+        { path: 'c.json', row_count: 1, entry_ids: ['1CCC'] },
+      ] } } } } },
+    'ab.json': { build_id: 'a', rows: [row('a1', 1, { pdb_id: '1AAA' }), row('b1', 2, { pdb_id: '1BBB' })] },
+    'c.json': { build_id: 'a', rows: [row('c1', 3, { pdb_id: '1CCC' })] },
+  };
+  const repository = new RnaDataRepository({ manifestUrl: 'https://example.org/manifest.json', fetchImpl: async url => {
+    calls.push(url);
+    return new Response(JSON.stringify(assets[url.split('/').at(-1)]));
+  } });
+  return { repository, calls, assets };
+}
+
+test('Coordinate streaming prunes entry partitions before fetch and retains no parsed chunks', async () => {
+  const { repository, calls } = coordinateRepository();
+  const received = [];
+  for await (const chunk of repository.iterateSurveyCoordinates('G', { entryIds: ['1bbb'] })) {
+    received.push(...chunk.rows.map(item => item.id));
+    assert.equal(chunk.source_row_count, 2);
+    assert.equal(chunk.selected_row_count, 1);
+    assert.throws(() => { chunk.rows.push(row('bad', 1)); }, TypeError);
+  }
+  assert.deepEqual(received, ['b1']);
+  assert.ok(!calls.some(url => url.endsWith('c.json')));
+  assert.equal(repository.coordinateRequests.size, 0);
+  assert.deepEqual([...repository.promises.keys()], ['manifest']);
+  const beforeEmptySelection = calls.length;
+  for await (const chunk of repository.iterateSurveyCoordinates('G', { entryIds: [] })) assert.fail('An empty selection must emit no chunks');
+  assert.equal(calls.length, beforeEmptySelection);
+});
+
+test('Coordinate iteration can stop before fetching later chunks and honors cancellation', async () => {
+  const { repository, calls } = coordinateRepository();
+  for await (const chunk of repository.iterateSurveyCoordinates('G')) {
+    assert.equal(chunk.rows.length, 2);
+    break;
+  }
+  assert.equal(calls.filter(url => !url.endsWith('manifest.json')).length, 1);
+  const controller = new AbortController();
+  controller.abort(new Error('superseded'));
+  await assert.rejects(async () => {
+    for await (const chunk of repository.iterateSurveyCoordinates('G', { signal: controller.signal })) assert.fail('Aborted iteration cannot emit chunks');
+  }, /superseded/);
+  assert.equal(calls.length, 2);
+});
+
+test('Coordinate collection is bounded, uncached by default and retains at most one opt-in selection', async () => {
+  const { repository, calls } = coordinateRepository();
+  await assert.rejects(repository.loadSurveyCoordinates('G', { maxRows: 2 }), /use iterateSurveyCoordinates/);
+  assert.equal(repository.coordinateRequests.size, 0);
+  const selected = await repository.loadSurveyCoordinates('G', { entryIds: ['1AAA'], maxRows: 1 });
+  assert.deepEqual(selected.rows.map(item => item.id), ['a1']);
+  const previous = calls.length;
+  await repository.loadSurveyCoordinates('G', { entryIds: ['1AAA'], maxRows: 1 });
+  assert.equal(calls.length, previous + 1);
+  await repository.loadSurveyCoordinates('G', { entryIds: ['1AAA'], maxRows: 1, retain: true });
+  await repository.loadSurveyCoordinates('G', { entryIds: ['1BBB'], maxRows: 1, retain: true });
+  assert.equal([...repository.promises.keys()].filter(key => key.startsWith('survey:coordinates:collected:')).length, 1);
+  repository.releaseSurvey('coordinates', 'G');
+  assert.deepEqual([...repository.promises.keys()], ['manifest']);
+});
+
+test('Coordinate partitions validate build identity and serialized row counts', async () => {
+  for (const invalid of ['build', 'count']) {
+    const { repository, assets } = coordinateRepository();
+    if (invalid === 'build') assets['ab.json'].build_id = 'other';
+    else assets['ab.json'].rows.pop();
+    await assert.rejects(async () => {
+      for await (const chunk of repository.iterateSurveyCoordinates('G')) assert.fail('Invalid partition cannot be delivered');
+    }, invalid === 'build' ? /Cross-build/ : /row count mismatch/);
+    assert.equal(repository.coordinateRequests.size, 0);
+  }
+});
+
+test('Opening-conditioned CSV freezes source and endpoint identities with exact values', () => {
+  const source = row('site1|pair|pair1', 12.125, { source_observation_id: 'site1', residue_id: 'residue1',
+    pair_id: 'pair1', endpoint_role: 'first', opening: -2.375, opening_bin: '[-5, 0)' });
+  const result = distribution([source], torsion, { groupBy: 'none', sigma: 0 });
+  const snapshot = createPlotSnapshot({ result, buildId: 'opening-test', selectionSpec: { openingBin: '[-5, 0)' },
+    dataHashes: { coordinates: 'hash-a' }, provenance: { annotation_endpoint_policy: 'all' } });
+  const output = csv(snapshot), header = output.split('\r\n')[0].split(',');
+  for (const column of ['source_observation_id', 'residue_id', 'pair_id', 'endpoint_role', 'opening', 'opening_bin']) assert.ok(header.includes(column));
+  assert.match(output, /site1,residue1,pair1,first,-2\.375,"\[-5, 0\)"/);
+  const record = snapshot.result.series[0].rows[0];
+  source.opening = 99; source.opening_bin = 'changed'; source.pair_id = 'changed';
+  assert.equal(csv(snapshot), output);
+  assert.equal(record.pair_id, 'pair1');
+  assert.equal(record.opening, -2.375);
+  assert.equal(JSON.parse(provenance(snapshot)).data_hashes.coordinates, 'hash-a');
 });

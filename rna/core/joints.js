@@ -38,8 +38,12 @@ export function join(leftInput, rightInput, relationSpec = { type: 'identity' })
     if (!relations) throw new Error(`An explicit relation table is required for ${relationSpec.type}`);
     if (relationSpec.relations.build_id && leftInput.build_id && relationSpec.relations.build_id !== leftInput.build_id) throw new Error('Cross-build RNA relation table');
     for (const relation of relations) {
-      const leftId = relation[relationSpec.leftKey || 'left_id'];
-      const rightId = relation[relationSpec.rightKey || 'right_id'];
+      const fieldForLevel = { pair: 'pair_id', residue: 'residue_id', step: 'step_id' };
+      const leftKey = relationSpec.leftKey || (relation.left_id ? 'left_id' : fieldForLevel[relationSpec.xParameter?.level]);
+      const rightKey = relationSpec.rightKey || (relation.right_id ? 'right_id' : fieldForLevel[relationSpec.yParameter?.level]);
+      const leftId = relation[leftKey], rightId = relation[rightKey];
+      // A multiplexed relation asset contains other declared relation kinds too.
+      if ((!leftId || !rightId) && relation.kind && leftKey && rightKey) continue;
       if (!leftId || !rightId) throw new Error('Relation requires explicit endpoint identities');
       emit(leftId, rightId, relation);
     }

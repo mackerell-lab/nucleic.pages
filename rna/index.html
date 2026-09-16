@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Explore canonical pure-RNA structures, backbone conformations, base geometry, and structural distributions from the Protein Data Bank." />
+    <title>Pure RNA Explorer</title>
+    <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../css/main.css" />
+    <link rel="stylesheet" href="./rna.css" />
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  </head>
+  <body data-explorer="rna">
+    <div class="shell" id="rnaExplorer">
+      <header class="hero rna-hero">
+        <h1>Pure RNA Explorer</h1>
+        <a class="rna-sibling-link" href="../">Pure DNA Explorer ↗</a>
+      </header>
+      <div id="appStatus" class="rna-status" role="status" aria-live="polite">Loading RNA dataset…</div>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Universe Snapshot</h2><p id="universeDescription">Canonical A/C/G/U RNA structures selected from the PDB. Associated components and experimental quality are filtered separately.</p></div>
+        <div id="overviewCards" class="card-grid"></div>
+        <div class="panel-subhead collapse-toggle-row">
+          <div><h3>Database PDB Table</h3><p>Inspect the exact entries, RNA annotations, and coordinate coverage in this dataset.</p></div>
+          <button type="button" id="universeToggle" class="toggle-btn collapse-toggle" aria-expanded="false" aria-controls="universeDrawer">Show PDB entries</button>
+        </div>
+        <div id="universeDrawer" class="drawer-panel" hidden>
+          <div class="drawer-toolbar"><label>Find PDB entry<input id="universeSearch" type="search" placeholder="PDB ID or annotation" /></label><div class="drawer-pager"><button id="universePrev" class="toggle-btn" type="button">Prev</button><span id="universePageLabel" class="drawer-page-label"></span><button id="universeNext" class="toggle-btn" type="button">Next</button></div></div>
+          <div class="table-shell"><table class="data-table"><thead><tr><th>PDB</th><th>RNA function / structure</th><th>Method</th><th>Resolution</th><th>Cleanliness</th><th>Residues</th><th>Coverage</th></tr></thead><tbody id="universeTableBody"></tbody></table></div>
+        </div>
+      </section>
+
+      <section class="panel" id="filtersPanel">
+        <div class="panel-head"><h2>Filter Stack</h2><p>Entry filters are followed by entity annotations and observation context. Plot-display controls change how the same selected measurements are drawn.</p></div>
+        <div class="filter-sections">
+          <section class="filter-section filter-section-data">
+            <div class="filter-section-head"><h3>Data Selection</h3><p>Residue statistics include both stems and unpaired RNA. Function and structure are separate, potentially overlapping annotations.</p></div>
+            <div id="dataControls" class="filter-layout"></div>
+          </section>
+          <section class="filter-section filter-section-display">
+            <div class="filter-section-head"><h3>Plot Display</h3><p>Each visible curve is normalized separately. Smoothing is specified in histogram bins.</p></div>
+            <div id="displayControls" class="filter-layout filter-layout-display"></div>
+          </section>
+        </div>
+        <div class="controls"><label>Family<select id="familySelect"></select></label><label>Parameter<select id="parameterSelect"></select></label></div>
+        <p id="parameterDefinition" class="rna-definition"></p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Distribution View</h2><p>These plots and summaries use the active filters. The universe cards above remain fixed to the complete loaded dataset.</p></div>
+        <div id="distributionStats" class="stats-strip"></div>
+        <div class="panel-subhead collapse-toggle-row">
+          <div><h3>Filtered PDB Table</h3><p>Entry eligibility and contribution of a finite plotted value are listed separately.</p></div>
+          <div class="collapse-actions"><button type="button" id="filteredCsvDownload" class="toggle-btn" disabled>Download current plot CSV</button><button type="button" id="plotProvenanceDownload" class="toggle-btn" disabled>Download provenance</button><button type="button" id="filteredToggle" class="toggle-btn collapse-toggle" aria-expanded="false" aria-controls="filteredDrawer">Show filtered PDB entries</button></div>
+        </div>
+        <div id="filteredDrawer" class="drawer-panel" hidden><div class="drawer-toolbar"><p>Contributing entries contain at least one displayed finite measurement.</p><div class="drawer-pager"><button id="filteredPrev" class="toggle-btn" type="button">Prev</button><span id="filteredPageLabel" class="drawer-page-label"></span><button id="filteredNext" class="toggle-btn" type="button">Next</button></div></div><div class="table-shell"><table class="data-table"><thead><tr><th>PDB</th><th>RNA annotation</th><th>Method</th><th>Resolution</th><th>Cleanliness</th><th>Residues</th><th>Contributes</th></tr></thead><tbody id="filteredTableBody"></tbody></table></div></div>
+        <div id="plot" class="plot-panel"><div class="empty-state">Loading RNA measurements…</div></div>
+        <p id="distributionCoverage" class="rna-note"></p>
+        <div class="panel-subhead"><h3>Visible Series Summary</h3><p>Counts, descriptive statistics, and CSV use the same observations as the current plot.</p></div>
+        <div id="seriesSummary" class="card-grid compact-grid"></div>
+        <div class="panel-subhead"><h3>Family Overview</h3><p>Select a parameter to focus its distribution. Each parameter has its own finite-value coverage.</p></div>
+        <div id="familyOverview" class="small-multiple-grid"></div>
+      </section>
+
+      <section class="panel" id="jointSection">
+        <div class="panel-head"><h2>2D Joint Analysis</h2><p>Match measurements by their full observation identity, or follow an explicit base-pair endpoint relation. A pair with two endpoints contributes two related observations.</p></div>
+        <div id="jointControls" class="joint-controls"></div>
+        <div class="controls"><label>Family 2<select id="family2Select"></select></label><label>Parameter 2<select id="parameter2Select"></select></label></div>
+        <div id="jointDisplayControls" class="joint-controls joint-display-controls"></div>
+        <div id="jointPlot" class="plot-panel joint-plot-panel"><div class="empty-state">Select a second parameter to generate a joint distribution.</div></div>
+        <div id="jointStats" class="stats-strip"></div>
+        <div class="collapse-actions"><button type="button" id="jointCsvDownload" class="toggle-btn" disabled>Download joint plot CSV</button></div><p id="jointNote" class="rna-note"></p>
+      </section>
+
+      <section class="panel" id="baseGeometrySection">
+        <div class="panel-head"><div><h2>Base Geometry Survey</h2><p>Atom-defined base angles, dihedrals, and RNA 2′-OH heavy-atom geometry. Base-internal terms include unpaired residues; pair-specific measurements require an identified interaction.</p></div><button type="button" id="baseGeometryLoad" class="toggle-btn collapse-toggle" disabled>Load base geometry survey</button></div>
+        <p id="surveyAvailability" class="rna-note">Checking available survey data…</p>
+        <div id="baseGeometryBody" hidden>
+          <div class="controls"><label>Survey group<select id="surveyGroupSelect"></select></label><label>Selected term<select id="baseGeometryTermSelect"></select></label><label>Opening conditioning<select id="surveyOpeningSelect"><option value="all">All residue observations</option><option value="bins">By supported pair opening</option></select></label></div>
+          <p id="surveyDefinition" class="rna-definition"></p>
+          <div id="baseGeometryStats" class="stats-strip"></div>
+          <div id="baseGeometryPlot" class="plot-panel base-geometry-plot"></div>
+          <div class="collapse-actions"><button type="button" id="surveyCsvDownload" class="toggle-btn" disabled>Download survey CSV</button></div>
+          <div class="panel-subhead"><div><h3>Opening-Binned Term Ranking</h3><p>Compare supported pair-opening contexts using explicit residue–interaction links. Each incidence preserves its interaction identity; unpaired residues remain in the unconditional survey.</p><p id="baseGeometryBinNote" class="rna-note"></p></div><button type="button" id="surveyRankingLoad" class="toggle-btn">Compute term ranking</button></div>
+          <div id="surveyRankingControls" class="joint-controls"></div>
+          <div class="table-shell compact-table-shell"><table class="data-table"><thead><tr><th>Term</th><th>n small / middle / large</th><th>Mean small</th><th>Mean middle</th><th>Mean large</th><th>Large − small</th><th>Coverage</th></tr></thead><tbody id="baseGeometryRankingBody"></tbody></table></div>
+          <div class="panel-subhead"><h3>Survey Coverage</h3><p>Finite and unavailable values are counted separately for each atom-defined term.</p></div>
+          <div class="table-shell compact-table-shell"><table class="data-table"><thead><tr><th>Term</th><th>Atoms</th><th>Finite</th><th>Unavailable</th></tr></thead><tbody id="surveyCoverageBody"></tbody></table></div>
+        </div>
+        <div class="panel-subhead"><div><h3>Average Coordinates</h3><p>Aligned coordinates describe structural variation, not thermal motion. The dataset records the atom order and local frame recipe.</p></div><button type="button" id="coordinatesLoad" class="toggle-btn" disabled>Load coordinate survey</button></div>
+        <div id="coordinateBody" hidden><div class="controls"><label>Coordinate frame / group<select id="coordinateGroupSelect"></select></label><label>Coordinate context<select id="coordinateContextSelect"></select></label><label>Opening bin<select id="coordinateOpeningSelect"><option value="all">All openings</option><option value="small">Small</option><option value="middle">Middle</option><option value="large">Large</option></select></label></div><p id="coordinateFrameNote" class="rna-note"></p><div id="coordinatePlot" class="plot-panel"></div><div class="table-shell compact-table-shell"><table class="data-table"><thead><tr><th>Atom</th><th>Observations</th><th>PDB entries</th><th>Mean x (Å)</th><th>Mean y (Å)</th><th>Mean z (Å)</th><th>RMS spread (Å)</th></tr></thead><tbody id="baseGeometryCoordBody"></tbody></table></div></div>
+      </section>
+
+      <section class="panel" id="rnaInformationSection">
+        <div class="panel-head"><h2>RNA Interpretation &amp; Data Provenance</h2><p>RNA uses uracil and a ribose O2′ group. Missing atoms, unknown annotations, and unsupported geometry remain visible as distinct coverage limitations.</p></div>
+        <div id="annotationCards" class="card-grid compact-grid"></div>
+        <details class="rna-details"><summary>Selection, chemistry, and statistical interpretation</summary><p>Pure RNA describes polymer composition. Magnesium, other ions, water, and organic ligands are handled by the component profile. Canonical eligibility uses the full declared A/C/G/U sequence, including unmodeled positions; a sequence does not have to contain U to be RNA.</p><p>NAKB function and structure annotations can overlap and can belong to different RNA entities within one entry. An unannotated structure is not evidence that a feature is absent. Resolution applies to the selected experimental method; NMR entries are not assigned a diffraction resolution.</p><p>RNA backbone torsions, pseudotorsions, sugar pucker, and glycosidic geometry have explicit atom requirements. RNA-specific pucker and suite information should not be interpreted using DNA BI/BII or A/B-form thresholds. Pair and step measurements describe only their supported local interactions.</p><p>Observations from one structure, chain, or base pair are related. Distribution widths describe this structural collection and are not confidence intervals or free-energy profiles. Circular mean directions may be undefined for symmetric or nearly uniform data.</p></details>
+        <details class="rna-details"><summary>Dataset details and supported capabilities</summary><pre id="datasetProvenance"></pre></details>
+        <p class="rna-note"><a href="https://www.rcsb.org/" target="_blank" rel="noopener noreferrer">RCSB PDB</a> · <a href="https://nakb.org/annotations.html" target="_blank" rel="noopener noreferrer">NAKB annotations</a> · <a href="https://rna.bgsu.edu/rna3dhub/" target="_blank" rel="noopener noreferrer">RNA 3D Hub</a></p>
+      </section>
+      <noscript><p class="rna-status">JavaScript is required to load the local RNA tables and draw interactive plots.</p></noscript>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

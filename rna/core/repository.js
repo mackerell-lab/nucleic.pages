@@ -13,8 +13,9 @@ export class RnaDataRepository {
     if (!manifestUrl) throw new Error('manifestUrl is required');
     this.manifestUrl = new URL(manifestUrl, globalThis.location?.href || 'http://localhost/').href;
     this.releaseUrl = this.manifestUrl;
-    this.fetchImpl = fetchImpl;
+    this.fetchImpl = fetchImpl.bind(globalThis);
     this.promises = new Map();
+    this.coordinateRequests = new Map();
   }
 
   cached(key, loader) {
@@ -26,8 +27,8 @@ export class RnaDataRepository {
     return this.promises.get(key);
   }
 
-  async readJson(url) {
-    const response = await this.fetchImpl(url);
+  async readJson(url, { signal } = {}) {
+    const response = await this.fetchImpl(url, signal ? { signal } : undefined);
     if (!response.ok) throw new Error(`Cannot load RNA asset (${response.status}): ${url}`);
     const bytes = new Uint8Array(await response.arrayBuffer());
     let text;
@@ -90,7 +91,10 @@ export class RnaDataRepository {
       const survey = manifest.survey?.[kind];
       if (!survey) throw new Error(`RNA survey is unavailable: ${kind}`);
       const descriptors = survey.terms || survey.groups;
-      const partitions = survey.partitions || (descriptors && Object.entries(descriptors).map(([id, item]) => ({ id, ...item })));
+      const registry = manifest.survey.terms || [];
+      const partitions = survey.partitions || (descriptors && Object.entries(descriptors).map(([id, item]) => ({
+        ...(Array.isArray(registry) ? registry.find(term => (term.id || term.term_id) === id) : registry[id]), id, ...item,
+      })));
       if (partition === null && partitions && !survey.path) return { partitions, terms: kind === 'scalars' ? partitions : undefined, groups: kind === 'coordinates' ? partitions : undefined };
       const descriptor = partition !== null && partitions
         ? partitions.find(item => String(item.id ?? item.term_id ?? item.group_key) === String(partition)) : survey;
@@ -101,9 +105,69 @@ export class RnaDataRepository {
     });
   }
   loadSurveyScalars(termId = null) { return this.loadSurvey('scalars', termId); }
-  loadSurveyCoordinates(groupKey = null) { return this.loadSurvey('coordinates', groupKey); }
+  async *iterateSurveyCoordinates(groupKey, { entryIds = null, signal } = {}) {
+    const manifest = await this.loadManifest();
+    const survey = manifest.survey?.coordinates;
+    const descriptor = survey?.groups?.[groupKey] || survey?.partitions?.find(item => (item.id ?? item.group_key) === groupKey)
+      || (survey?.path && !survey.groups ? survey : null);
+    if (!descriptor) throw new Error(`RNA coordinate group is unavailable: ${groupKey}`);
+    const selected = entryIds === null ? null : new Set(Array.from(entryIds, id => String(id).toUpperCase()));
+    if (selected && selected.size === 0) return;
+    const partitions = descriptor.partitions || (descriptor.path ? [descriptor] : []);
+    if (!partitions.length) throw new Error(`RNA coordinate group has no partitions: ${groupKey}`);
+    for (const partition of partitions) {
+      if (signal?.aborted) throw signal.reason || new Error('RNA coordinate loading was cancelled');
+      if (selected && partition.entry_ids && !partition.entry_ids.some(id => selected.has(String(id).toUpperCase()))) continue;
+      if (!partition.path) throw new Error(`RNA coordinate partition has no path: ${groupKey}`);
+      const url = new URL(partition.path, this.releaseUrl).href;
+      // Retain only requests that are actually in flight. Streaming means no
+      // parsed coordinate partition is kept in the repository after delivery.
+      let request = signal ? null : this.coordinateRequests.get(url);
+      if (!request) {
+        request = this.readJson(url, { signal });
+        if (!signal) {
+          this.coordinateRequests.set(url, request);
+          request.finally(() => {
+            if (this.coordinateRequests.get(url) === request) this.coordinateRequests.delete(url);
+          }).catch(() => {});
+        }
+      }
+      const data = await request;
+      if (signal?.aborted) throw signal.reason || new Error('RNA coordinate loading was cancelled');
+      if (data.build_id && data.build_id !== manifest.build_id) throw new Error('Cross-build RNA coordinate partition');
+      const sourceRows = Array.isArray(data) ? data : data.rows;
+      if (!Array.isArray(sourceRows)) throw new Error('RNA coordinate partition requires rows');
+      if (partition.row_count != null && partition.row_count !== sourceRows.length) throw new Error('RNA coordinate partition row count mismatch');
+      const rows = selected ? sourceRows.filter(row => selected.has(String(row.pdb_id || row.accession || row.entry_id || '').toUpperCase())) : sourceRows;
+      yield deepFreeze({ ...(Array.isArray(data) ? {} : data), rows, group_key: groupKey, build_id: manifest.build_id,
+        partition_path: partition.path, source_row_count: sourceRows.length, selected_row_count: rows.length });
+    }
+  }
+  loadSurveyCoordinates(groupKey = null, options = {}) {
+    if (groupKey === null) return this.loadSurvey('coordinates');
+    // Small consumers can collect rows, but large plots must aggregate the
+    // iterator. The default cap prevents accidental full-group heap retention.
+    const maxRows = options.maxRows ?? 100000;
+    if (!Number.isInteger(maxRows) || maxRows < 0) return Promise.reject(new Error('Coordinate maxRows must be a nonnegative integer'));
+    const load = async () => {
+      const rows = [];
+      let buildId = null;
+      for await (const chunk of this.iterateSurveyCoordinates(groupKey, options)) {
+        if (rows.length + chunk.rows.length > maxRows) throw new Error(`RNA coordinates exceed ${maxRows} collected rows; use iterateSurveyCoordinates`);
+        for (const row of chunk.rows) rows.push(row);
+        buildId = chunk.build_id;
+      }
+      return deepFreeze({ rows, group_key: groupKey, build_id: buildId || (await this.loadManifest()).build_id });
+    };
+    if (!options.retain) return load();
+    const key = `survey:coordinates:collected:${JSON.stringify([groupKey, options.entryIds == null ? null : [...options.entryIds].sort(), maxRows])}`;
+    // Opt-in collection retains at most one bounded coordinate selection.
+    for (const cachedKey of this.promises.keys()) if (cachedKey.startsWith('survey:coordinates:collected:') && cachedKey !== key) this.promises.delete(cachedKey);
+    return this.cached(key, load);
+  }
   releaseSurvey(kind, partition = null) {
     this.promises.delete(`survey:${kind}${partition === null ? '' : `:${partition}`}`);
+    if (kind === 'coordinates') for (const key of this.promises.keys()) if (key.startsWith('survey:coordinates:collected:')) this.promises.delete(key);
   }
 }
 

@@ -1,0 +1,445 @@
+import { NucleicAcidExplorer } from './NucleicAcidExplorer.js';
+import { familyParameters, parameterValue, normalizeParameter } from '../core/registry.js';
+import { selectRows, methodKey } from '../core/selection.js';
+import { distribution, histogram2D } from '../core/analysis.js';
+import { join } from '../core/joints.js';
+import { csv, createPlotSnapshot, provenance } from '../core/export.js';
+import { cards, control, distributionTraces, download, element, entryId, labels, number, options, plotLayout, stats, summaryCards, tableRows } from '../views/panels.js';
+import { annotationLabel } from '../views/labels.js';
+import { summary, wrapCircular } from '../math/numeric.js';
+
+const choices = pairs => pairs.map(([id, label]) => ({ id, label }));
+const rowsOf = table => Array.isArray(table) ? table : table?.rows ?? [];
+const dataValue = row => typeof row.value === 'number' && Number.isFinite(row.value) ? row.value : null;
+
+export class PureRnaExplorer extends NucleicAcidExplorer {
+  constructor(config) {
+    super(config);
+    this.state = {
+      selection: { components: 'relaxed', methods: ['xray'], resolutionMax: 3, contexts: [], functions: [], subtypes: [], structures: [], puckerStates: [], includeEnds: true },
+      display: { groupBy: 'base', circularMode: 'wrap_360', sigma: 1.6, normalization: 'probability', fine: true, traceStyle: 'filled' },
+      familyId: '', parameterId: 'chi', family2Id: '', parameter2Id: '',
+      joint: { mode: 'identity', endpoint: 'both', type: 'heatmap', colorScale: 'linear', palette: 'YlOrRd', labels: false, contourCount: 12 },
+      survey: { loaded: false, group: 'all', termId: '', opening: 'all', ranking: false, minimum: 20, coordinatesLoaded: false, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all' },
+    };
+    this.pages = { universe: 0, filtered: 0 }; this.filteredEntries = []; this.contributing = new Set();
+    this.rankingCache = new Map();
+  }
+
+  async start() {
+    this.manifest = await this.repository.loadManifest();
+    this.metadata = await this.repository.loadMetadata();
+    this.entries = this.metadata.entries ?? rowsOf(this.metadata);
+    this.families = Array.isArray(this.manifest.families) ? this.manifest.families : Object.entries(this.manifest.families ?? {}).map(([id, family]) => ({ id, ...family }));
+    if (!this.families.length) throw new Error('The RNA release does not contain any available parameter families.');
+    const defaultFamily = this.families.find(family => familyParameters(this.manifest, family.id).some(parameter => parameter.id === 'chi')) ?? this.families[0];
+    this.state.familyId = defaultFamily.id;
+    if (!this.parameters().some(parameter => parameter.id === this.state.parameterId)) this.state.parameterId = this.parameters()[0]?.id;
+    this.registerPanels(); this.renderUniverse(); this.renderControls(); this.updateSelectors(); this.bindEvents();
+    await this.requestRender();
+    return this;
+  }
+
+  parameters(familyId = this.state.familyId) { return familyId ? familyParameters(this.manifest, familyId) : []; }
+  parameter(familyId, parameterId) { return this.parameters(familyId).find(parameter => parameter.id === parameterId); }
+  registerPanels() {
+    const survey = this.manifest.survey ?? {};
+    this.$('baseGeometryLoad').disabled = !survey.scalars;
+    this.$('coordinatesLoad').disabled = !survey.coordinates;
+    this.$('surveyAvailability').textContent = survey.scalars ? 'Scalar and coordinate tables load independently when requested.' : 'This release does not include a validated base geometry survey.';
+    if (!survey.coordinates) this.$('coordinatesLoad').title = 'Aligned coordinate observations are not supplied in this release.';
+    this.$('datasetProvenance').textContent = JSON.stringify({ build_id: this.manifest.build_id, generated_at: this.manifest.generated_at, source: this.manifest.source ?? this.manifest.sources, selection: this.manifest.selection ?? this.manifest.policy, coordinate_policy: this.manifest.coordinate_policy, capabilities: this.manifest.capabilities, validation: this.manifest.validation, limitations: this.manifest.limitations, provenance: this.manifest.provenance }, null, 2);
+  }
+
+  annotationChoices(field, aliases = []) {
+    const values = new Set();
+    for (const entry of [...this.entries, ...(this.metadata.entities ?? [])]) {
+      for (const key of [field, ...aliases]) for (const value of labels(entry[key])) values.add(value);
+    }
+    return [{ id: 'all', label: 'All (including unknown)' }, ...[...values].sort().map(id => ({ id, label: annotationLabel(id) })), { id: 'unknown', label: 'Unknown annotation' }];
+  }
+
+  renderControls() {
+    const selection = this.state.selection; const display = this.state.display;
+    const data = this.$('dataControls'); const visual = this.$('displayControls'); data.replaceChildren(); visual.replaceChildren();
+    const choice = (id, title, values, selected, action, extras = {}) => control(data, { id, title, choices: choices(values), selected, onChange: action, ...extras });
+    choice('cleanlinessGroup', 'Cleanliness', [['all', 'All'], ['conservative', 'No extra het'], ['relaxed', 'Only inorganic-like het'], ['mw100', 'No het >100 Da']], selection.components, components => this.setSelection({ components }), { help: 'Component profiles are independent of canonical RNA polymer eligibility. Exact profile definitions are recorded in the dataset.' });
+    choice('methodGroup', 'Method', [['xray', 'X-ray'], ['nmr', 'NMR'], ['em', 'EM'], ['other', 'Other']], selection.methods, methods => this.setSelection({ methods }), { multi: true });
+    choice('resolutionGroup', 'Resolution', [['any', 'Any'], ['known', 'Known'], ['1.5', '≤ 1.5 Å'], ['2', '≤ 2.0 Å'], ['2.5', '≤ 2.5 Å'], ['3', '≤ 3.0 Å']], selection.resolution === 'known' ? 'known' : selection.resolutionMax === null ? 'any' : String(selection.resolutionMax), value => this.setSelection({ resolutionMax: value === 'any' || value === 'known' ? null : Number(value), resolution: value === 'known' ? 'known' : 'any' }), { help: 'Numeric limits apply to X-ray and EM. Explicitly selected NMR entries remain eligible; Known requires a reported value.' });
+    for (const [id, title, key, aliases] of [['functionGroup', 'RNA Function (NAKB)', 'functions', ['function_tags']], ['subtypeGroup', 'RNA Type (NAKB)', 'subtypes', ['rna_types']], ['structureGroup', 'Structure Tags (NAKB)', 'structures', ['structural_tags']]]) {
+      control(data, { id, title, choices: this.annotationChoices(key, aliases), selected: selection[key]?.[0] ?? 'all', select: true, onChange: value => this.setSelection({ [key]: value === 'all' ? [] : [value] }), help: 'Annotations can overlap. Entity-specific annotations select their RNA observations. Pair and step filters require all recorded endpoint entities to match.' });
+    }
+    choice('contextGroup', 'Sequence Context', [['A', 'A'], ['C', 'C'], ['G', 'G'], ['U', 'U']], selection.contexts, contexts => this.setSelection({ contexts }), { multi: true, help: 'No selected context includes all contexts. The choices adapt to the observation family.' });
+    choice('terminalGroup', 'Terminal Policy', [['include', 'Include ends'], ['exclude', 'Exclude ends']], selection.includeEnds ? 'include' : 'exclude', value => this.setSelection({ includeEnds: value === 'include' }), { help: 'Includes finite terminal measurements by default. Missing covalent neighbors still make dependent torsions unavailable.' });
+    choice('groupingGroup', 'Group Curves By', [['base', 'Sequence context'], ['method', 'Method'], ['function', 'Function'], ['structure', 'Structure tag'], ['none', 'All observations']], display.groupBy, groupBy => this.setDisplay({ groupBy }));
+    const visualChoice = (id, title, values, selected, action, help) => control(visual, { id, title, choices: choices(values), selected, onChange: action, help });
+    visualChoice('circularModeGroup', 'Circular Axis', [['auto', 'Auto'], ['wrap_360', '0–360°'], ['signed_180', '±180°']], display.circularMode, circularMode => this.setDisplay({ circularMode }));
+    visualChoice('smoothingSigmaGroup', 'Smoothing σ', [['0', 'Off'], ['0.8', '0.8'], ['1.2', '1.2'], ['1.6', '1.6'], ['2', '2.0']], String(display.sigma), value => this.setDisplay({ sigma: Number(value) }), 'Gaussian width in histogram-bin units.');
+    visualChoice('displayScaleGroup', 'Probability / Density', [['probability', 'Probability'], ['density', 'Density']], display.normalization, normalization => this.setDisplay({ normalization }));
+    visualChoice('traceStyleGroup', 'Trace Style', [['filled', 'Filled'], ['line', 'Line only']], display.traceStyle, traceStyle => this.setDisplay({ traceStyle }));
+    visualChoice('binDetailGroup', 'Histogram Detail', [['standard', 'Standard'], ['fine', 'Fine']], display.fine ? 'fine' : 'standard', value => this.setDisplay({ fine: value === 'fine' }), 'Standard uses 64 linear or 72 circular bins; Fine doubles the bin count.');
+    this.renderJointControls();
+  }
+
+  renderJointControls() {
+    const joint = this.state.joint; this.$('jointControls').replaceChildren(); this.$('jointDisplayControls').replaceChildren();
+    const add = (parent, id, title, values, selected, key) => control(this.$(parent), { id, title, choices: choices(values), selected, onChange: value => { this.state.joint[key] = key === 'labels' ? value === 'on' : key === 'contourCount' ? Number(value) : value; this.requestRender(); } });
+    add('jointControls', 'jointJoinModeGroup', 'Join Mode', [['identity', 'Same observation'], ['relation', 'Pair → Residue']], joint.mode, 'mode');
+    add('jointControls', 'jointResidueSideGroup', 'Residue Side', [['both', 'Both'], ['nt1', 'nt1'], ['nt2', 'nt2']], joint.endpoint, 'endpoint');
+    add('jointDisplayControls', 'jointPlotTypeGroup', 'Plot Type', [['heatmap', 'Heatmap'], ['contour', 'Contour'], ['filled_contour', 'Filled contour'], ['heatmap_contour', 'Heatmap + contour']], joint.type, 'type');
+    add('jointDisplayControls', 'jointContourLabelsGroup', 'Contour Labels', [['off', 'Off'], ['on', 'On']], joint.labels ? 'on' : 'off', 'labels');
+    add('jointDisplayControls', 'jointContourWidthGroup', 'Contour Spacing', [['6', 'Wide'], ['12', 'Standard'], ['24', 'Tight']], String(joint.contourCount), 'contourCount');
+    add('jointDisplayControls', 'jointColorScaleGroup', 'Color Scale', [['linear', 'Linear'], ['log', 'Log']], joint.colorScale, 'colorScale');
+    add('jointDisplayControls', 'jointPaletteGroup', 'Color Palette', [['YlOrRd', 'Hotspots'], ['Viridis', 'Viridis'], ['Blues', 'Blues']], joint.palette, 'palette');
+  }
+
+  updateSelectors() {
+    const families = this.families.map(family => ({ id: family.id, label: family.label ?? family.name ?? family.id.replaceAll('_', ' ') }));
+    options(this.$('familySelect'), families, this.state.familyId);
+    options(this.$('parameterSelect'), this.parameters(), this.state.parameterId);
+    options(this.$('family2Select'), [{ id: '', label: 'Select a second family…' }, ...families], this.state.family2Id);
+    options(this.$('parameter2Select'), this.state.family2Id ? this.parameters(this.state.family2Id) : [{ id: '', label: 'Select a family first' }], this.state.parameter2Id);
+  }
+
+  bindEvents() {
+    for (const name of ['universe', 'filtered']) {
+      this.listen(this.$(`${name}Toggle`), 'click', () => { const drawer = this.$(`${name}Drawer`); drawer.hidden = !drawer.hidden; this.$(`${name}Toggle`).setAttribute('aria-expanded', String(!drawer.hidden)); this.$(`${name}Toggle`).textContent = `${drawer.hidden ? 'Show' : 'Hide'} ${name === 'filtered' ? 'filtered ' : ''}PDB entries`; });
+      this.listen(this.$(`${name}Prev`), 'click', () => { this.pages[name]--; this.renderTable(name); });
+      this.listen(this.$(`${name}Next`), 'click', () => { this.pages[name]++; this.renderTable(name); });
+    }
+    this.listen(this.$('universeSearch'), 'input', () => { this.pages.universe = 0; this.renderTable('universe'); });
+    this.listen(this.$('familySelect'), 'change', event => {
+      this.state.familyId = event.target.value; this.state.parameterId = this.parameters()[0].id; this.state.selection.contexts = []; this.state.selection.puckerStates = []; this.updateSelectors(); this.requestRender();
+    });
+    this.listen(this.$('parameterSelect'), 'change', event => { this.state.parameterId = event.target.value; this.requestRender(); });
+    this.listen(this.$('family2Select'), 'change', event => { this.state.family2Id = event.target.value; this.state.parameter2Id = this.parameters(event.target.value)[0]?.id ?? ''; this.updateSelectors(); this.requestRender(); });
+    this.listen(this.$('parameter2Select'), 'change', event => { this.state.parameter2Id = event.target.value; this.requestRender(); });
+    for (const [id, key] of [['filteredCsvDownload', 'distribution'], ['jointCsvDownload', 'joint'], ['surveyCsvDownload', 'survey']]) this.listen(this.$(id), 'click', () => this.exportSnapshot(key));
+    this.listen(this.$('plotProvenanceDownload'), 'click', () => { if (this.snapshots.distribution) download(`pure-rna-${this.manifest.build_id}-provenance.json`, provenance(this.snapshots.distribution), 'application/json'); });
+    this.listen(this.$('baseGeometryLoad'), 'click', async () => { this.state.survey.loaded = true; this.$('baseGeometryBody').hidden = false; await this.requestRender(); });
+    this.listen(this.$('coordinatesLoad'), 'click', async () => { this.state.survey.coordinatesLoaded = true; this.$('coordinateBody').hidden = false; await this.requestRender(); });
+    this.listen(this.$('surveyGroupSelect'), 'change', event => { this.state.survey.group = event.target.value; this.state.survey.termId = ''; this.requestRender(); });
+    this.listen(this.$('baseGeometryTermSelect'), 'change', event => { this.state.survey.termId = event.target.value; this.requestRender(); });
+    this.listen(this.$('coordinateContextSelect'), 'change', event => { this.state.survey.coordinateContext = event.target.value; this.requestRender(); });
+    this.listen(this.$('coordinateGroupSelect'), 'change', event => { this.state.survey.coordinateGroup = event.target.value; this.state.survey.coordinateContext = 'all'; this.requestRender(); });
+    this.listen(this.$('coordinateOpeningSelect'), 'change', event => { this.state.survey.coordinateOpening = event.target.value; this.requestRender(); });
+    this.listen(this.$('surveyOpeningSelect'), 'change', event => { this.state.survey.opening = event.target.value; this.requestRender(); });
+    this.listen(this.$('surveyRankingLoad'), 'click', () => { this.state.survey.ranking = true; this.requestRender(); });
+    control(this.$('surveyRankingControls'), { id: 'baseGeometryMinObsGroup', title: 'Minimum per opening bin', choices: choices([['5', '5'], ['20', '20'], ['50', '50'], ['100', '100']]), selected: '20', onChange: value => { this.state.survey.minimum = Number(value); this.requestRender(); } });
+  }
+
+  renderUniverse() {
+    const methods = Object.fromEntries(['xray', 'nmr', 'em', 'other'].map(method => [method, this.entries.filter(entry => [entry.method, ...(entry.methods ?? [])].some(value => methodKey(value) === method)).length]));
+    const rows = this.families.reduce((total, family) => total + (family.row_count ?? 0), 0);
+    const annotated = this.entries.filter(entry => labels(entry.functions ?? entry.function_tags).length || (this.metadata.entities ?? []).some(entity => entryId(entity) === entryId(entry) && labels(entity.functions).length)).length;
+    const partial = this.manifest.partial ?? this.manifest.subset ?? this.manifest.release_status === 'partial';
+    const description = `${number(this.entries.length)} canonical pure-RNA PDB entries in ${partial ? 'this explicitly bounded dataset' : 'this dataset'}. Full declared RNA sequences use A/C/G/U; protein, DNA, hybrid, and noncanonical polymers are excluded. ${this.manifest.generated_at ? `Generated ${this.manifest.generated_at.slice(0, 10)}.` : ''}`;
+    this.$('universeDescription').textContent = description;
+    cards(this.$('overviewCards'), [
+      { title: `${number(this.entries.length)} PDB entries`, kind: partial ? 'Subset release' : 'Canonical RNA', detail: 'Full declared sequence determines canonical eligibility.', metrics: [['Families', this.families.length], ['Stored family rows', rows]] },
+      { title: 'Experimental Methods', kind: 'Archive metadata', metrics: [['X-ray', methods.xray], ['NMR', methods.nmr], ['EM', methods.em], ['Other', methods.other]] },
+      { title: 'RNA Annotation Coverage', kind: 'NAKB', detail: 'Functions can overlap. Unknown remains in the default population.', metrics: [['Annotated entries', annotated], ['Unknown', this.entries.length - annotated]] },
+      { title: 'A · C · G · U', kind: 'RNA chemistry', detail: 'Uracil remains U. Ribose O2′ and missing atoms receive explicit atom-level treatment.', metrics: [['Default profile', 'Inorganic-like'], ['Default resolution', 'X-ray ≤ 3.0 Å']] },
+    ]);
+    cards(this.$('annotationCards'), [
+      { title: 'Function & Structure', detail: 'Riboswitch, ribozyme, tRNA, aptamer, and structural annotations select their recorded entity scope. Multiple labels may describe one RNA.' },
+      { title: 'Local Conformation', detail: 'Glycosidic torsion, ribose pucker, and backbone angles describe local geometry. Each parameter reports its supported atoms and neighbors.' },
+      { title: 'Interactions & Stems', detail: 'Canonical AU/GC and GU wobble stems are distinct from the complete interaction graph. No entire-duplex gate is imposed on residue statistics.' },
+    ]);
+    this.renderTable('universe');
+  }
+
+  renderTable(name) {
+    let entries = name === 'universe' ? this.entries : this.filteredEntries;
+    if (name === 'universe') { const search = this.$('universeSearch').value.trim().toLowerCase(); if (search) entries = entries.filter(entry => JSON.stringify(entry).toLowerCase().includes(search)); }
+    const pages = Math.max(1, Math.ceil(entries.length / 100)); this.pages[name] = Math.max(0, Math.min(this.pages[name], pages - 1));
+    const page = this.pages[name];
+    const visible = entries.slice(page * 100, (page + 1) * 100).map(entry => {
+      const entities = (this.metadata.entities ?? []).filter(entity => entryId(entity) === entryId(entry));
+      return { ...entry, functions: [...new Set(entities.flatMap(entity => labels(entity.functions)).concat(labels(entry.functions)))].map(annotationLabel), structures: [...new Set(entities.flatMap(entity => labels(entity.structures)).concat(labels(entry.structures)))].map(annotationLabel) };
+    });
+    tableRows(this.$(`${name}TableBody`), visible, name === 'filtered' ? this.contributing : null);
+    this.$(`${name}PageLabel`).textContent = `Page ${page + 1} / ${pages} · ${number(entries.length)} entries`;
+    this.$(`${name}Prev`).disabled = page === 0; this.$(`${name}Next`).disabled = page === pages - 1;
+  }
+
+  displaySpec(display, parameter) { return { ...display, bins: (parameter.period ? 72 : 64) * (display.fine ? 2 : 1) }; }
+  snapshot(options) {
+    const result = options.result;
+    const parameters = result.kind === 'joint' ? [result.xParameter, result.yParameter] : [result.parameter];
+    return createPlotSnapshot({ ...options, coordinatePolicy: this.manifest.coordinate_policy ?? this.manifest.provenance?.coordinate_policy,
+      parameterDefinitionIds: parameters.filter(Boolean).map(parameter => parameter.definition_id ?? parameter.id),
+      dataHashes: this.manifest.data_hashes ?? this.manifest.hashes ?? this.manifest.checksums ?? Object.fromEntries([['metadata', this.manifest.metadata?.sha256], ...this.families.map(family => [`family:${family.id}`, family.sha256])].filter(([, hash]) => hash)),
+      provenance: { source: this.manifest.source ?? this.manifest.sources, policy: this.manifest.policy, registry_version: this.manifest.registry_version, release_url: this.repository.releaseUrl, ...(options.provenance ?? {}) } });
+  }
+  decorate(result) { for (const series of result.series ?? []) series.label = annotationLabel(series.label ?? series.key); return result; }
+  async render(request) {
+    const { revision, state } = request;
+    this.status('Updating RNA measurements…');
+    for (const id of ['filteredCsvDownload', 'plotProvenanceDownload', 'jointCsvDownload', 'surveyCsvDownload']) this.$(id).disabled = true;
+    const family = await this.repository.loadFamily(state.familyId);
+    if (!this.current(revision)) return;
+    const parameter = this.parameter(state.familyId, state.parameterId);
+    const selection = selectRows(family, this.metadata, state.selection);
+    const display = this.displaySpec(state.display, parameter);
+    const result = this.decorate(distribution(selection.rows, parameter, display));
+    const snapshot = this.snapshot({ result, selectionSpec: state.selection, displaySpec: display, buildId: this.manifest.build_id, parameter, familyId: state.familyId, revision });
+    await this.commit(revision, async () => {
+      await this.plot(this.$('plot'), distributionTraces(result, display), plotLayout(parameter, display.normalization));
+      if (!this.current(revision)) return;
+      this.snapshots.distribution = snapshot;
+      const finiteRows = (result.series ?? []).flatMap(series => series.rows ?? []);
+      const uniqueRows = new Set(finiteRows.map(row => row.id));
+      this.contributing = new Set(finiteRows.map(entryId));
+      const selectedEntryIds = selection.entryIds ?? selection.coverage?.entryIds;
+      this.filteredEntries = selection.entries ?? (selectedEntryIds ? this.entries.filter(entry => new Set(selectedEntryIds).has(entryId(entry))) : this.entries.filter(entry => new Set(selection.rows.map(entryId)).has(entryId(entry))));
+      stats(this.$('distributionStats'), [['Filtered PDB entries', this.filteredEntries.length, 'filteredPdbCount'], ['Plotted observations', uniqueRows.size || result.coverage?.finite || 0, 'filteredObservationCount'], ['Current family rows', rowsOf(family).length, 'loadedFamilyRows'], ['Contributing PDBs', this.contributing.size, 'contributingPdbCount'], ['Method scope', state.selection.methods.length ? state.selection.methods.join(', ') : 'All', 'currentMethodScope'], ['Context scope', state.selection.contexts.length ? state.selection.contexts.join(', ') : 'All', 'currentContextScope']]);
+      summaryCards(this.$('seriesSummary'), result);
+      this.$('parameterDefinition').textContent = this.definition(parameter);
+      const finite = uniqueRows.size || result.coverage?.finite || 0;
+      this.$('distributionCoverage').textContent = `${number(finite)} unique finite observations from ${number(selection.rows.length)} selected rows. ${number(Math.max(0, selection.rows.length - finite))} rows lack an available finite ${parameter.label ?? parameter.id} value. Function or structure groups may overlap.`;
+      this.$('filteredCsvDownload').disabled = false; this.$('plotProvenanceDownload').disabled = false;
+      this.renderTable('filtered'); this.updateContexts(family, state); this.updatePuckerControls(family, state);
+      await this.renderFamilyOverview(selection.rows, state, revision);
+    });
+    if (!this.current(revision)) return;
+    await this.renderJoint(state, revision, selection);
+    if (state.survey.loaded && this.current(revision)) await this.renderSurvey(state, revision);
+    if (state.survey.coordinatesLoaded && this.current(revision)) await this.renderCoordinates(state, revision);
+    if (this.current(revision)) this.status('', 'ready');
+  }
+
+  definition(parameter) {
+    const atoms = parameter.atoms ?? parameter.atom_pattern ?? parameter.definition?.atoms;
+    const atomText = Array.isArray(atoms) ? atoms.join(' – ') : typeof atoms === 'string' ? atoms : '';
+    return `${parameter.label ?? parameter.id}${parameter.unit ? ` (${parameter.unit})` : ''} · ${parameter.level ?? 'residue'} observation · ${parameter.period ? `${parameter.period}° periodic` : 'linear'}${atomText ? ` · ${atomText}` : ''}${parameter.description ? ` — ${parameter.description}` : ''}`;
+  }
+
+  updateContexts(family, state) {
+    const values = [...new Set(rowsOf(family).map(row => row.context ?? row.sequence_context ?? row.pair_label ?? row.step_label ?? row.base ?? row.base_code ?? row.comp_id).filter(Boolean))].sort();
+    if (!values.length) return;
+    const old = this.$('contextGroup'); const cluster = old?.parentElement; if (!cluster) return;
+    const temporary = element('div'); control(temporary, { id: 'contextGroup', title: 'Sequence Context', choices: values.map(id => ({ id, label: id })), selected: state.selection.contexts, multi: true, onChange: contexts => this.setSelection({ contexts }) }); cluster.replaceWith(temporary.firstChild);
+  }
+
+  updatePuckerControls(family, state) {
+    const existing = this.$('puckerGroup')?.parentElement;
+    const states = [...new Set(rowsOf(family).map(row => row.pucker_class ?? row.pucker_state).filter(value => typeof value === 'string'))].sort();
+    if (!states.length) { existing?.remove(); return; }
+    const temporary = element('div');
+    control(temporary, { id: 'puckerGroup', title: 'Ribose Pucker', choices: [{ id: 'all', label: 'All puckers' }, ...states.map(id => ({ id, label: id }))], selected: state.selection.puckerStates?.[0] ?? 'all', select: true, onChange: value => this.setSelection({ puckerStates: value === 'all' ? [] : [value] }), help: 'Recorded ribose pseudorotation sectors. Undefined pucker is retained by the All setting.' });
+    if (existing) existing.replaceWith(temporary.firstChild); else this.$('dataControls').append(temporary.firstChild);
+  }
+
+  async renderFamilyOverview(rows, state, revision) {
+    const container = this.$('familyOverview'); container.replaceChildren();
+    for (const parameter of this.parameters(state.familyId)) {
+      if (!this.current(revision)) return;
+      const result = distribution(rows, parameter, { ...this.displaySpec(state.display, parameter), groupBy: 'none' });
+      const card = element('button', { type: 'button', className: `card rna-overview-button${parameter.id === state.parameterId ? ' active' : ''}`, 'data-parameter': parameter.id });
+      card.append(element('h3', {}, parameter.label ?? parameter.id));
+      const finite = rows.filter(row => parameterValue(row, parameter) !== null).length;
+      card.append(element('p', { className: 'meta' }, `${number(finite)} / ${number(rows.length)} finite`));
+      const plot = element('div', { className: 'rna-mini-plot', 'aria-hidden': 'true' }); card.append(plot); container.append(card);
+      card.addEventListener('click', () => { this.state.parameterId = parameter.id; this.$('parameterSelect').value = parameter.id; this.requestRender(); });
+      await this.plot(plot, distributionTraces(result, { traceStyle: 'line' }), plotLayout(parameter, state.display.normalization, { height: 150, margin: { l: 30, r: 8, t: 4, b: 30 }, showlegend: false, xaxis: { title: '', tickfont: { size: 10 } }, yaxis: { title: '', tickfont: { size: 10 } } }));
+    }
+  }
+
+  async renderJoint(state, revision, leftSelection) {
+    if (!state.family2Id || !state.parameter2Id) {
+      await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, 'Select a second parameter above to generate a joint distribution.')); this.$('jointStats').replaceChildren(); this.$('jointCsvDownload').disabled = true; this.snapshots.joint = null; });
+      return;
+    }
+    const rightTable = await this.repository.loadFamily(state.family2Id);
+    if (!this.current(revision)) return;
+    const xParameter = this.parameter(state.familyId, state.parameterId); const yParameter = this.parameter(state.family2Id, state.parameter2Id);
+    // The second axis has its own context vocabulary; do not apply pair/step labels to residues.
+    const rightSpec = xParameter.level === yParameter.level ? state.selection : { ...state.selection, contexts: [] };
+    const rightSelection = selectRows(rightTable, this.metadata, rightSpec);
+    let relations = [];
+    if (state.joint.mode === 'relation') {
+      const relationKey = Object.keys(this.manifest.relations ?? {}).find(key => /pair.*residue|endpoint/.test(key)) ?? (this.manifest.relations?.observations ? 'observations' : null);
+      if (!relationKey) { await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, 'This release has no validated pair-to-residue relation table.')); this.$('jointStats').replaceChildren(); this.snapshots.joint = null; this.$('jointCsvDownload').disabled = true; }); return; }
+      relations = rowsOf(await this.repository.loadRelations(relationKey));
+    }
+    const endpoint = { nt1: 'first', nt2: 'second' }[state.joint.endpoint] ?? state.joint.endpoint;
+    const joined = join(leftSelection.rows, rightSelection.rows, { type: state.joint.mode, relations, endpoint, xParameter, yParameter, x: xParameter.id, y: yParameter.id });
+    const result = histogram2D(joined.points, xParameter, yParameter, { ...state.display, bins: state.display.fine ? 72 : 36 });
+    const snapshot = this.snapshot({ result: { ...result, points: result.points ?? joined.points }, selectionSpec: state.selection, displaySpec: state.display, buildId: this.manifest.build_id, joinSpec: state.joint, provenance: { join_diagnostics: joined.diagnostics }, revision });
+    await this.commit(revision, async () => {
+      const z = result.z?.map(row => Array.from(row, value => state.joint.colorScale === 'log' ? value > 0 ? Math.log10(value) : null : value)) ?? [];
+      const common = { x: Array.from(result.x ?? []), y: Array.from(result.y ?? []), z, colorscale: state.joint.palette, colorbar: { title: state.joint.colorScale === 'log' ? `log₁₀ ${state.display.normalization}` : state.display.normalization } };
+      const contour = { ...common, type: 'contour', ncontours: state.joint.contourCount, contours: { coloring: state.joint.type === 'filled_contour' ? 'fill' : 'none', showlabels: state.joint.labels }, showscale: state.joint.type !== 'heatmap_contour' };
+      const traces = state.joint.type === 'heatmap' ? [{ ...common, type: 'heatmap' }] : state.joint.type === 'heatmap_contour' ? [{ ...common, type: 'heatmap' }, contour] : [contour];
+      await this.plot(this.$('jointPlot'), traces, plotLayout(xParameter, state.display.normalization, { yaxis: { title: `${yParameter.label ?? yParameter.id}${yParameter.unit ? ` (${yParameter.unit})` : ''}` }, height: 530 }));
+      if (!this.current(revision)) return;
+      this.snapshots.joint = snapshot;
+      const points = result.points ?? joined.points; const summary = result.statistics ?? {};
+      stats(this.$('jointStats'), [['Matched observations', points.length, 'jointMatchedN'], ['Matched PDBs', new Set(points.map(point => entryId(point.left ?? point))).size, 'jointMatchedPdbs'], ['Pearson r', xParameter.period || yParameter.period ? 'Not applicable' : number(summary.r), 'jointPearsonR'], ['Circular corr.', xParameter.period && yParameter.period ? number(summary.r) : 'Not applicable', 'jointCircularR'], ['R²', xParameter.period || yParameter.period ? 'Not applicable' : number(summary.r2), 'jointRSquared']]);
+      this.$('jointNote').textContent = state.joint.mode === 'relation' ? 'Endpoint observations retain pair, residue, and side identities. Both endpoints are statistically related.' : 'Only identical observation IDs are matched; display labels and sequence text do not establish identity.';
+      this.$('jointCsvDownload').disabled = false;
+    });
+  }
+
+  async renderSurvey(state, revision) {
+    const terms = this.surveyTerms();
+    const groups = [...new Set(terms.map(term => term.group))];
+    const available = terms.filter(term => state.survey.group === 'all' || term.group === state.survey.group);
+    const term = available.find(item => item.id === state.survey.termId) ?? available[0];
+    if (!term) { await this.commit(revision, () => { this.$('surveyDefinition').textContent = 'No survey terms are available for this group.'; }); return; }
+    const table = await this.repository.loadSurveyScalars(term.id);
+    if (!this.current(revision)) return;
+    const normalized = this.surveyRows(table, term);
+    const selection = selectRows({ rows: normalized }, this.metadata, { ...state.selection, contexts: [] });
+    const parameter = normalizeParameter(term);
+    let termRows = selection.rows.filter(row => (row.term_id ?? row.term) === term.id);
+    let openingIndex = null;
+    if (state.survey.opening === 'bins' || state.survey.ranking) openingIndex = await this.openingIndex(state);
+    if (!this.current(revision)) return;
+    if (state.survey.opening === 'bins') termRows = this.openingIncidences(termRows, openingIndex);
+    const display = { ...this.displaySpec(state.display, parameter), groupBy: state.survey.opening === 'bins' ? 'opening_bin' : state.display.groupBy };
+    const result = this.decorate(distribution(termRows, parameter, display));
+    const snapshot = this.snapshot({ result, selectionSpec: state.selection, buildId: this.manifest.build_id, displaySpec: display, provenance: { survey_term: term.id, opening_conditioning: state.survey.opening, opening_bins: this.manifest.survey.opening_bins, incidence_policy: state.survey.opening === 'bins' ? 'one row per explicit residue-pair incidence' : 'one row per residue or pair observable' } });
+    await this.commit(revision, async () => {
+      await this.plot(this.$('baseGeometryPlot'), distributionTraces(result, state.display), plotLayout(parameter, state.display.normalization));
+      if (!this.current(revision)) return;
+      this.snapshots.survey = snapshot;
+      options(this.$('surveyGroupSelect'), [{ id: 'all', label: 'All groups' }, ...groups.map(id => ({ id, label: annotationLabel(id) }))], state.survey.group);
+      options(this.$('baseGeometryTermSelect'), available, term.id); this.state.survey.termId = term.id;
+      this.$('surveyDefinition').textContent = this.definition(parameter);
+      stats(this.$('baseGeometryStats'), [['Filtered scalar rows', selection.rows.length, 'baseGeometryScalarRows'], ['Survey terms', terms.length, 'baseGeometryRankRows'], ['Plotted term rows', termRows.filter(row => parameterValue(row, parameter) !== null).length, 'baseGeometrySelectedRows']]);
+      this.$('surveyCoverageBody').replaceChildren(...available.map(item => {
+        const rows = item.id === term.id ? selection.rows : null; const finite = rows?.filter(row => parameterValue(row, item) !== null).length;
+        const row = element('tr'); const atoms = item.atoms ?? item.atom_pattern ?? '';
+        row.append(...[item.label, Array.isArray(atoms) ? atoms.join(' – ') : String(atoms), rows ? number(finite) : 'Load term', rows ? number(rows.length - finite) : 'Load term'].map(value => element('td', {}, value))); return row;
+      }));
+      this.$('surveyCsvDownload').disabled = false;
+      const bins = (this.manifest.survey.opening_bins ?? []).filter(bin => Number.isFinite(bin.min) && Number.isFinite(bin.max));
+      this.$('baseGeometryBinNote').textContent = bins.length ? bins.map(bin => `${bin.label ?? bin.id}: ${bin.include_min ? '[' : '('}${bin.min}, ${bin.max}${bin.include_max ? ']' : ')'}°`).join(' · ') + ' These are descriptive bins, not RNA conformation thresholds.' : 'This release does not declare opening-bin boundaries; conditioned comparisons are unavailable.';
+    });
+    if (this.lastSurveyTerm && this.lastSurveyTerm !== term.id) this.repository.releaseSurvey?.('scalars', this.lastSurveyTerm);
+    this.lastSurveyTerm = term.id;
+    if (state.survey.ranking && this.current(revision)) await this.renderOpeningRanking(available, state, revision, openingIndex);
+  }
+
+  surveyTerms() {
+    const definitions = this.manifest.survey?.terms ?? [];
+    const terms = Array.isArray(definitions) ? definitions : Object.entries(definitions).map(([id, value]) => ({ id, ...value }));
+    return terms.map(term => ({ ...term, id: term.id ?? term.term_id, label: term.label ?? term.display_name ?? term.name ?? term.id ?? term.term_id, group: term.group ?? term.survey_group ?? term.kind ?? 'other', atoms: term.atoms ?? term.source_atom_pattern, period: term.period ?? (term.is_circular ? 360 : null), level: term.level ?? term.observation_level }));
+  }
+  surveyRows(table, term) {
+    return rowsOf(table).map(row => ({ ...row, context: row.context ?? row.sequence_context ?? row.base, values: { ...(row.values ?? {}), [row.term_id ?? term.id]: dataValue(row) }, statuses: { ...(row.statuses ?? {}), [row.term_id ?? term.id]: row.status ?? 'ok' } }));
+  }
+  openingBin(opening) {
+    if (!Number.isFinite(opening)) return 'missing';
+    const bins = this.manifest.survey?.opening_bins ?? [];
+    return bins.find(bin => Number.isFinite(bin.min) && Number.isFinite(bin.max) && (bin.include_min ? opening >= bin.min : opening > bin.min) && (bin.include_max ? opening <= bin.max : opening < bin.max))?.id ?? 'outside';
+  }
+  async openingIndex(state) {
+    const family = this.families.find(item => this.parameters(item.id).some(parameter => parameter.id === 'opening'));
+    if (!family || !this.manifest.relations?.observations) return { residues: new Map(), pairs: new Map() };
+    const [table, relations] = await Promise.all([this.repository.loadFamily(family.id), this.repository.loadRelations('observations')]);
+    const selected = selectRows(table, this.metadata, { ...state.selection, contexts: [] });
+    const pairs = new Map(selected.rows.map(row => [row.id, row])); const residues = new Map();
+    for (const link of rowsOf(relations)) {
+      if (link.kind !== 'pair_residue' || !pairs.has(link.pair_id)) continue;
+      if (!residues.has(link.residue_id)) residues.set(link.residue_id, []);
+      residues.get(link.residue_id).push({ ...link, opening: parameterValue(pairs.get(link.pair_id), 'opening') });
+    }
+    return { residues, pairs };
+  }
+  openingIncidences(rows, index) {
+    const result = []; const seen = new Set();
+    for (const row of rows) {
+      const links = row.pair_id ? index.pairs.has(row.pair_id) ? [{ pair_id: row.pair_id, opening: parameterValue(index.pairs.get(row.pair_id), 'opening') }] : [] : index.residues.get(row.residue_id ?? row.observation_id) ?? [];
+      for (const link of links) {
+        const bin = this.openingBin(link.opening); if (!['small', 'middle', 'large'].includes(bin)) continue;
+        const id = `${row.id}|pair|${link.pair_id}`; if (seen.has(id)) continue; seen.add(id);
+        result.push({ ...row, id, source_observation_id: row.id, pair_id: link.pair_id, opening: link.opening, opening_bin: bin });
+      }
+    }
+    return result;
+  }
+  async renderOpeningRanking(terms, state, revision, openingIndex) {
+    const ranks = []; this.$('surveyRankingLoad').disabled = true;
+    const selectionKey = JSON.stringify(state.selection);
+    if (!this.rankingCache.has(selectionKey)) {
+      if (this.rankingCache.size >= 5) this.rankingCache.delete(this.rankingCache.keys().next().value);
+      this.rankingCache.set(selectionKey, new Map());
+    }
+    const cached = this.rankingCache.get(selectionKey);
+    try {
+      for (let index = 0; index < terms.length; index++) {
+        if (!this.current(revision)) return;
+        const term = terms[index];
+        if (cached.has(term.id)) { ranks.push(cached.get(term.id)); continue; }
+        const table = await this.repository.loadSurveyScalars(term.id);
+        const selected = selectRows(this.surveyRows(table, term), this.metadata, { ...state.selection, contexts: [] });
+        const incidences = this.openingIncidences(selected.rows, openingIndex);
+        const groups = ['small', 'middle', 'large'].map(bin => incidences.filter(row => row.opening_bin === bin).map(row => parameterValue(row, term)).filter(value => value !== null));
+        const means = groups.map(values => summary(values, { period: term.period }).mean);
+        const difference = means[0] !== null && means[2] !== null ? term.period ? wrapCircular(means[2] - means[0] + term.period / 2, term.period) - term.period / 2 : means[2] - means[0] : null;
+        const rank = { term, counts: groups.map(values => values.length), means, difference };
+        ranks.push(rank); cached.set(term.id, rank);
+        if (term.id !== this.lastSurveyTerm) this.repository.releaseSurvey?.('scalars', term.id);
+        if (!this.current(revision)) return;
+        this.$('surveyRankingLoad').textContent = `Computing ${index + 1} / ${terms.length}…`;
+      }
+      await this.commit(revision, () => {
+        ranks.sort((a, b) => (Number.isFinite(b.difference) ? Math.abs(b.difference) : -Infinity) - (Number.isFinite(a.difference) ? Math.abs(a.difference) : -Infinity));
+        this.$('baseGeometryRankingBody').replaceChildren(...ranks.map(rank => {
+          const row = element('tr'); const label = element('td'); const button = element('button', { type: 'button', className: 'toggle-btn' }, rank.term.label);
+          button.addEventListener('click', () => { this.state.survey.termId = rank.term.id; this.state.survey.opening = 'bins'; this.$('surveyOpeningSelect').value = 'bins'; this.requestRender(); }); label.append(button);
+          row.append(label, ...[rank.counts.join(' / '), ...rank.means.map(number), number(rank.difference), rank.counts.every(n => n >= state.survey.minimum) ? 'All bins meet minimum' : 'Insufficient per-bin coverage'].map(value => element('td', {}, value))); return row;
+        }));
+      });
+    } finally { this.$('surveyRankingLoad').disabled = false; this.$('surveyRankingLoad').textContent = 'Recompute term ranking'; }
+  }
+
+  async renderCoordinates(state, revision) {
+    const groupChoices = Object.keys(this.manifest.survey.coordinates.groups ?? {});
+    const group = groupChoices.includes(state.survey.coordinateGroup) ? state.survey.coordinateGroup : groupChoices.find(key => key.includes('cytosine_standard_pair')) ?? groupChoices[0];
+    const eligible = selectRows([], this.metadata, state.selection).entryIds;
+    const repository = this.repository;
+    const chunks = repository.iterateSurveyCoordinates ? repository.iterateSurveyCoordinates(group, { entryIds: eligible }) : (async function* () { yield await repository.loadSurveyCoordinates(group); })();
+    const groups = new Map(); const contextSet = new Set();
+    for await (const chunk of chunks) {
+      if (!this.current(revision)) return;
+      const selection = selectRows(chunk, this.metadata, { ...state.selection, contexts: [] });
+      for (const row of selection.rows) {
+        const context = row.context ?? row.sequence_context ?? row.base ?? row.base_code;
+        if (context) contextSet.add(context);
+        if (state.survey.coordinateContext !== 'all' && context !== state.survey.coordinateContext) continue;
+        if (state.survey.coordinateOpening !== 'all' && row.opening_bin !== state.survey.coordinateOpening) continue;
+        const name = row.atom_label ?? row.atom ?? row.atom_name ?? row.atom_id; const xyz = row.xyz ?? [row.x, row.y, row.z];
+        if (!name || !xyz.every(Number.isFinite)) continue;
+        const key = `${context ?? ''} ${name}`.trim();
+        if (!groups.has(key)) groups.set(key, { mean: [0, 0, 0], m2: 0, n: 0, entries: new Set() });
+        const accumulator = groups.get(key); accumulator.n++; accumulator.entries.add(entryId(row));
+        for (let axis = 0; axis < 3; axis++) {
+          const delta = xyz[axis] - accumulator.mean[axis]; accumulator.mean[axis] += delta / accumulator.n;
+          accumulator.m2 += delta * (xyz[axis] - accumulator.mean[axis]);
+        }
+      }
+    }
+    const contexts = [...contextSet].sort();
+    const averages = [...groups].map(([atom, result]) => ({ atom, mean: result.mean, rms: Math.sqrt(Math.max(0, result.m2 / result.n)), n: result.n, entries: result.entries.size }));
+    await this.commit(revision, async () => {
+      await this.plot(this.$('coordinatePlot'), [{ type: 'scatter3d', mode: 'markers+text', x: averages.map(row => row.mean[0]), y: averages.map(row => row.mean[1]), z: averages.map(row => row.mean[2]), text: averages.map(row => row.atom), marker: { size: 5, color: '#174a7e' }, textposition: 'top center' }], { paper_bgcolor: 'rgba(0,0,0,0)', margin: { t: 10, b: 0, l: 0, r: 0 }, scene: { aspectmode: 'data', xaxis: { title: 'x (Å)' }, yaxis: { title: 'y (Å)' }, zaxis: { title: 'z (Å)' } } });
+      if (!this.current(revision)) return;
+      options(this.$('coordinateGroupSelect'), groupChoices.map(id => ({ id, label: id.replace('cytosine_standard_pair', 'Cytosine standard pair frame').replace('rna_standard_base', 'RNA standard base frame').replaceAll('_', ' ') })), group);
+      this.state.survey.coordinateGroup = group;
+      this.$('coordinateFrameNote').textContent = `Frame: ${group?.includes('cytosine_standard_pair') ? 'Cytosine standard frame, aligned using the deposited C base and the pinned x3dna reference.' : 'RNA standard base frame, aligned to the pinned base-specific x3dna reference.'} Atom averages are computed separately for each recorded context and atom identity.`;
+      options(this.$('coordinateContextSelect'), [{ id: 'all', label: 'All recorded contexts' }, ...contexts.map(id => ({ id, label: id }))], state.survey.coordinateContext);
+      this.$('baseGeometryCoordBody').replaceChildren(...averages.map(item => { const row = element('tr'); row.append(...[item.atom, number(item.n), number(item.entries), ...item.mean.map(number), number(item.rms)].map(value => element('td', {}, value))); return row; }));
+    });
+    if (this.lastCoordinateGroup && this.lastCoordinateGroup !== group) this.repository.releaseSurvey?.('coordinates', this.lastCoordinateGroup);
+    this.lastCoordinateGroup = group;
+  }
+
+  exportSnapshot(key) {
+    const snapshot = this.snapshots[key]; if (!snapshot) return;
+    download(`pure-rna-${key}-${this.manifest.build_id}.csv`, csv(snapshot));
+  }
+}

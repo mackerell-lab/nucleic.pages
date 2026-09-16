@@ -14,6 +14,7 @@ export async function checkPalettes(page, record) {
   const choices = await page.locator('#jointPaletteGroup button').evaluateAll(buttons => buttons.map(button => button.dataset.value));
   assert.deepEqual(choices, Object.keys(expected), 'RNA palette choices differ from DNA');
   const saved = await page.evaluate(() => {
+    globalThis.rnaDistributionSnapshot = window.rnaExplorer.snapshots.distribution.snapshot_id;
     globalThis.rnaPaletteBaseline = window.rnaExplorer.snapshots.joint.result.points.map(point => [point.left_id, point.right_id, point.x, point.y]);
     return window.rnaExplorer.state.joint.palette;
   });
@@ -25,11 +26,13 @@ export async function checkPalettes(page, record) {
         const points = window.rnaExplorer.snapshots.joint.result.points, baseline = globalThis.rnaPaletteBaseline;
         const mismatch = points.length !== baseline.length || points.some((point, index) => [point.left_id, point.right_id, point.x, point.y].some((value, key) => value !== baseline[index][key]));
         const plot = document.querySelector('#jointPlot');
-        return { inputScale: plot.data[0].colorscale, renderedScale: plot._fullData[0].colorscale, mismatch, points: points.length };
+        return { inputScale: plot.data[0].colorscale, renderedScale: plot._fullData[0].colorscale, mismatch, points: points.length,
+          distributionSnapshotUnchanged: window.rnaExplorer.snapshots.distribution.snapshot_id === globalThis.rnaDistributionSnapshot };
       });
       assert.deepEqual(evidence.inputScale, colorscale, `${choice} does not use the DNA colorscale`);
       assert(Array.isArray(evidence.renderedScale) && evidence.renderedScale.length > 1, 'Plotly did not resolve the colorscale');
       assert.equal(evidence.mismatch, false, `${choice} changed raw joined observations`);
+      assert.equal(evidence.distributionSnapshotUnchanged, true, `${choice} unnecessarily rebuilt the 1D distribution`);
       rendered.push({ choice, colorscale: evidence.renderedScale, points: evidence.points });
     }
     assert.equal(new Set(rendered.map(item => JSON.stringify(item.colorscale))).size, 7, 'Different palette choices produced identical scales');

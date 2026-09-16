@@ -86,11 +86,11 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
 
   renderJointControls() {
     const joint = this.state.joint; this.$('jointControls').replaceChildren(); this.$('jointDisplayControls').replaceChildren();
-    const add = (parent, id, title, values, selected, key) => control(this.$(parent), { id, title, choices: choices(values), selected, onChange: value => { this.state.joint[key] = key === 'labels' ? value === 'on' : key === 'contourCount' ? Number(value) : value; this.requestRender(); } });
+    const add = (parent, id, title, values, selected, key) => control(this.$(parent), { id, title, choices: choices(values), selected, onChange: value => { this.state.joint[key] = key === 'labels' ? value === 'on' : key === 'contourCount' ? Number(value) : value; this.requestJointOnly(); } });
     add('jointControls', 'jointJoinModeGroup', 'Join Mode', [['identity', 'Same observation'], ['relation', 'Pair → Residue']], joint.mode, 'mode');
     add('jointControls', 'jointResidueSideGroup', 'Residue Side', [['both', 'Both'], ['nt1', 'nt1'], ['nt2', 'nt2']], joint.endpoint, 'endpoint');
     control(this.$('jointControls'), { id: 'jointResidueContextGroup', title: 'Residue Context', choices: choices(['A', 'C', 'G', 'U'].map(base => [base, base])), selected: joint.residueContexts ?? [], multi: true,
-      onChange: value => { this.state.joint.residueContexts = value; this.requestRender(); }, help: 'Independent endpoint selection for the joint plot. No selected base includes all RNA bases; the 1D selection is unchanged.' });
+      onChange: value => { this.state.joint.residueContexts = value; this.requestJointOnly(); }, help: 'Independent endpoint selection for the joint plot. No selected base includes all RNA bases; the 1D selection is unchanged.' });
     add('jointDisplayControls', 'jointPlotTypeGroup', 'Plot Type', [['heatmap', 'Heatmap'], ['contour', 'Contour'], ['filled_contour', 'Filled contour'], ['heatmap_contour', 'Heatmap + contour']], joint.type, 'type');
     add('jointDisplayControls', 'jointContourLabelsGroup', 'Contour Labels', [['off', 'Off'], ['on', 'On']], joint.labels ? 'on' : 'off', 'labels');
     add('jointDisplayControls', 'jointContourWidthGroup', 'Contour Spacing', [['6', 'Wide'], ['12', 'Standard'], ['24', 'Tight']], String(joint.contourCount), 'contourCount');
@@ -106,7 +106,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const puckers = [...new Set(rowsOf(table).map(row => row.pucker_class ?? row.pucker_state).filter(value => typeof value === 'string'))].sort();
     if (!puckers.length) return;
     control(this.$('jointControls'), { id: 'jointResiduePuckerGroup', title: 'Residue Ribose Pucker', choices: [{ id: 'all', label: 'All puckers' }, ...puckers.map(id => ({ id, label: id }))], selected: state.joint.residuePuckers?.[0] ?? 'all', select: true,
-      onChange: value => { this.state.joint.residuePuckers = value === 'all' ? [] : [value]; this.requestRender(); }, help: 'Select the recorded pucker of the joined residue independently of the paired endpoints. All includes unavailable pucker; DNA BI/BII states are not RNA pucker classes.' });
+      onChange: value => { this.state.joint.residuePuckers = value === 'all' ? [] : [value]; this.requestJointOnly(); }, help: 'Select the recorded pucker of the joined residue independently of the paired endpoints. All includes unavailable pucker; DNA BI/BII states are not RNA pucker classes.' });
   }
 
   updateSelectors() {
@@ -326,6 +326,19 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       this.$('jointNote').textContent = state.joint.mode === 'relation' ? 'Endpoint observations retain pair, residue, and side identities. Residue context and pucker are independent joint filters; both endpoints are statistically related.' : 'Only identical observation IDs are matched; display labels and sequence text do not establish identity.';
       this.$('jointCsvDownload').disabled = false;
     });
+  }
+
+  async requestJointOnly() {
+    const request = this.capture();
+    try {
+      const family = await this.repository.loadFamily(request.state.familyId);
+      if (!this.current(request.revision)) return;
+      const selection = selectRows(family, this.metadata, request.state.selection);
+      await this.renderJoint(request.state, request.revision, selection);
+      if (this.current(request.revision)) this.status('', 'ready');
+    } catch (error) {
+      if (this.current(request.revision)) { this.status(error.message, 'error'); console.error(error); }
+    }
   }
 
   async renderSurvey(state, revision) {

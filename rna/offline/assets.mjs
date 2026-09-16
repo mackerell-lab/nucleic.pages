@@ -14,7 +14,7 @@ const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',su
 
 function slimRow(row, parameters) {
   const allowed = ['id','pdb_id','entry_id','entity_id','label_asym_id','label_seq_id','auth_asym_id','auth_seq_id','comp_id',
-    'model_id','altloc','pucker_class','sequence_context','pair_label','pair_type','interaction_family','family','residue1_id',
+    'model_id','altloc','pucker_class','pucker_classes','sequence_context','pair_label','pair_type','interaction_family','family','residue1_id',
     'residue2_id','pair1_id','pair2_id','residue_ids','entity_ids','endpoint_entities','chain_ids','is_terminal','is_terminal_any','quality_flags',
     'step_label','frame_convention','atom_roles','near','alternative','stem_eligible','topology','is_terminal_5p','is_terminal_3p'];
   const result = Object.fromEntries(allowed.filter(key => row[key] !== undefined).map(key => [key, row[key]]));
@@ -88,6 +88,12 @@ class Partitions {
 }
 
 export async function buildAssets({build, buildDir, scope, assetsRoot}) {
+  try {
+    const active = await readJson(path.join(assetsRoot, 'manifest.json'));
+    if (active.build_id === build.build_id) throw new Error('Active RNA releases are immutable; choose a new build ID');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   const releaseRoot = path.join(assetsRoot, 'releases', build.build_id);
   const geometryParameters = await readJson(path.join(here, '../config/geometry_parameters_v1.json'));
   const allParameters = [...RESIDUE_PARAMETERS, ...geometryParameters];
@@ -123,6 +129,8 @@ export async function buildAssets({build, buildDir, scope, assetsRoot}) {
       const entityIds = [...new Set(endpoints.map(residue=>residue.entity_id))];
       return {...row,pdb_id:entry.pdb_id,model_id:row.model_id ?? entry.selected_model_id,
         residue_ids:ids,is_terminal_any:endpoints.some(residue=>residue.is_terminal_any===true),
+        pucker_classes:endpoints.map(residue=>residue.pucker_class ?? null),
+        ...(endpoints.length===1 ? {pucker_class:endpoints[0].pucker_class ?? null} : {}),
         endpoint_entities:entityIds.map(entity_id=>({pdb_id:entry.pdb_id,entity_id}))};
     };
     for (const [family, parameters] of definitions) if (parameters[0].level === 'residue' || parameters[0].observation_level === 'residue')

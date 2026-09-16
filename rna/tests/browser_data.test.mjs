@@ -424,3 +424,15 @@ test('Interaction grouping keeps exact, near and alternative pair observations d
   assert.deepEqual(result.series.map(series => series.rowIds), [['exact'], ['near'], ['alternate']]);
   assert.equal(result.coverage.memberships, 3);
 });
+
+test('Pucker selection follows all recorded members of survey and pair observations', () => {
+  const rows = [
+    { id: 'local', pdb_id: '1ABC', pucker_class: "C3'-endo" },
+    { id: 'survey', pdb_id: '1ABC', pucker_classes: ["C3'-endo"] },
+    { id: 'pair', pdb_id: '1ABC', pucker_classes: ["C3'-endo", "C3'-endo"] },
+    { id: 'mixed', pdb_id: '1ABC', pucker_classes: ["C3'-endo", "C2'-endo"] },
+    { id: 'missing', pdb_id: '1ABC', pucker_classes: [null] },
+  ];
+  assert.deepEqual(selectRows(rows, {}, { puckerStates: ["C3'-endo"] }).rows.map(row => row.id), ['local', 'survey', 'pair']);
+  assert.equal(selectRows(rows).rows.length, 5);
+});

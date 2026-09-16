@@ -57,6 +57,7 @@ test('real RNA numerical output retains release identities and rejects rehashed 
   for(const row of [...stepRows,...pairRows]) {
     assert.equal(row.model_id,'30');
     assert.equal(row.is_terminal_any,row.residue_ids.some(id=>residueIndex.get(id).is_terminal_any));
+    assert.deepEqual(row.pucker_classes,row.residue_ids.map(id=>residueIndex.get(id).pucker_class ?? null));
     assert.ok(row.frame_convention);
     assert.deepEqual(row.endpoint_entities.map(entity=>entity.entity_id).sort(),['1','2']);
   }
@@ -67,6 +68,12 @@ test('real RNA numerical output retains release identities and rejects rehashed 
   for(const row of await load(pairDescriptor)) {
     assert.deepEqual(row.endpoint_entities.map(entity=>entity.entity_id).sort(),['1','2']);
     assert.equal(row.is_terminal_any,row.residue_ids.some(id=>residueIndex.get(id).is_terminal_any));
+    assert.deepEqual(row.pucker_classes,row.residue_ids.map(id=>residueIndex.get(id).pucker_class ?? null));
+  }
+  const residueDescriptor=Object.entries(manifest.survey.scalars.terms).find(([id])=>!id.startsWith('same_pair_'))[1];
+  for(const row of await load(residueDescriptor)) {
+    assert.equal(row.pucker_class,residueIndex.get(row.residue_id).pucker_class ?? null);
+    assert.deepEqual(row.pucker_classes,[row.pucker_class]);
   }
   const coordinateDescriptor=Object.values(manifest.survey.coordinates.groups)[0].partitions[0];
   const pairCoordinateGroup=Object.values(manifest.survey.coordinates.groups).find(group=>group.label.includes('cytosine'));
@@ -75,6 +82,7 @@ test('real RNA numerical output retains release identities and rejects rehashed 
     assert.equal(row.residue_ids.length,2);
     assert.deepEqual(row.endpoint_entities.map(entity=>entity.entity_id).sort(),['1','2']);
     assert.ok(row.residue_ids.includes(row.target_residue_id) && row.residue_ids.includes(row.anchor_residue_id));
+    assert.deepEqual(row.pucker_classes,row.residue_ids.map(id=>residueIndex.get(id).pucker_class ?? null));
   }
   const familyDescriptor=manifest.families.find(row=>row.id==='step');
   const relationDescriptor=manifest.relations.observations;
@@ -96,5 +104,11 @@ test('real RNA numerical output retains release identities and rejects rehashed 
     assert.equal(result.ok,false);assert.ok(result.errors.some(error=>pattern.test(error)),JSON.stringify(result.errors));
     await fs.writeFile(file,original);descriptor.sha256=hash;
     await fs.writeFile(manifestPath,JSON.stringify(manifest));
+  });
+  await t.test('an activated release cannot be rebuilt in place', async () => {
+    const before = await fs.readFile(manifestPath);
+    await scope.json(path.join(assetsRoot, 'manifest.json'), {build_id: build.build_id});
+    await assert.rejects(buildAssets({build,buildDir,scope,assetsRoot}), /immutable/);
+    assert.deepEqual(await fs.readFile(manifestPath), before);
   });
 });

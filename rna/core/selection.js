@@ -101,7 +101,8 @@ export function selectRows(table, metadata = {}, spec = {}) {
       scopes[0][key].filter(value => scopes.every(scope => scope[key].includes(value)))]));
     const { functions, subtypes, structures } = annotations;
     if (!matches(tagValues(row.context ?? row.context_id ?? row.sequence_context ?? row.pair_label ?? row.step_label ?? row.comp_id), spec.contexts)) continue;
-    if (!matches(tagValues(row.pucker_state ?? row.pucker_class ?? row.pucker), spec.puckerStates)) continue;
+    const puckers = row.pucker_classes ?? [row.pucker_state ?? row.pucker_class ?? row.pucker];
+    if (spec.puckerStates?.length && (!puckers.length || !puckers.every(value => matches(tagValues(value), spec.puckerStates)))) continue;
     if (!matches(tagValues(row.chi_state), spec.chiStates)) continue;
     if ((spec.includeEnds === false || spec.terminalPolicy === 'exclude') && (row.is_terminal_any === true || row.is_terminal === true || row.terminal === true || row.end_context === true)) continue;
     rows.push({ ...row, entry, entity, functions, subtypes, structures,

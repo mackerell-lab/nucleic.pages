@@ -119,11 +119,13 @@ try {
 
   await page.click('#resetFilters');
   await waitReady(page);
-  const resetState = await page.evaluate(() => ({ selection: window.rnaExplorer.state.selection, display: window.rnaExplorer.state.display, joint: window.rnaExplorer.state.joint, family2: window.rnaExplorer.state.family2Id }));
+  const resetState = await page.evaluate(() => ({ selection: window.rnaExplorer.state.selection, display: window.rnaExplorer.state.display, joint: window.rnaExplorer.state.joint, family2: window.rnaExplorer.state.family2Id, survey: window.rnaExplorer.state.survey }));
   assert.deepEqual(resetState.selection.contexts, [], 'Reset retained sequence context');
   assert.equal(resetState.display.groupBy, 'base', 'Reset retained display grouping');
   assert.equal(resetState.joint.mode, 'identity', 'Reset retained joint mode');
   assert.equal(resetState.family2, '', 'Reset retained secondary family');
+  assert.equal(resetState.survey.group, 'all', 'Reset retained Survey group');
+  assert.equal(resetState.survey.opening, 'all', 'Reset retained Survey opening');
   record('Reset RNA filters restores defaults', resetState);
   await waitReady(page);
   await page.selectOption('#family2Select', 'backbone');

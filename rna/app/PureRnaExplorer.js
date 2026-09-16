@@ -155,8 +155,9 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.state.display = structuredClone(DEFAULT_DISPLAY);
     this.state.joint = structuredClone(DEFAULT_JOINT);
     this.state.family2Id = ''; this.state.parameter2Id = '';
-    this.state.survey.contexts = []; this.state.survey.opening = 'all'; this.state.survey.ranking = false;
-    this.state.survey.coordinateContext = 'all'; this.state.survey.coordinateOpening = 'all';
+    const surveyLoaded = this.state.survey.loaded, coordinatesLoaded = this.state.survey.coordinatesLoaded;
+    this.state.survey = { loaded: surveyLoaded, group: 'all', contexts: [], termId: '', opening: 'all', ranking: false, minimum: 20,
+      coordinatesLoaded, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all' };
     this.updateSelectors(); this.renderControls();
     return this.requestRender();
   }

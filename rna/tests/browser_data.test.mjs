@@ -339,3 +339,88 @@ test('Opening-conditioned CSV freezes source and endpoint identities with exact 
   assert.equal(record.opening, -2.375);
   assert.equal(JSON.parse(provenance(snapshot)).data_hashes.coordinates, 'hash-a');
 });
+
+test('Family LRU cache retains three recent resolved tables and reloads evicted data', async () => {
+  const calls = new Map();
+  const repository = new RnaDataRepository({ manifestUrl: 'https://example.org/manifest.json', fetchImpl: async url => {
+    const file = url.split('/').at(-1);
+    calls.set(file, (calls.get(file) || 0) + 1);
+    return new Response(JSON.stringify(file === 'manifest.json'
+      ? { schema_version: 'rna-explorer-1', molecule_type: 'RNA', build_id: 'a', families: ['a', 'b', 'c', 'd'].map(id => ({ id, path: `${id}.json`, row_count: 1 })) }
+      : { build_id: 'a', rows: [row(file, 10)] }));
+  } });
+  const retainedByCaller = await repository.loadFamily('b');
+  await repository.loadFamily('a');
+  await repository.loadFamily('c');
+  await repository.loadFamily('a');
+  await repository.loadFamily('d');
+  assert.deepEqual([...repository.resolvedFamilies.keys()], ['family:c', 'family:a', 'family:d']);
+  assert.ok(!repository.promises.has('family:b'));
+  assert.equal(retainedByCaller.rows[0].values.chi, 10);
+  assert.throws(() => { retainedByCaller.rows[0].values.chi = 20; }, TypeError);
+  await repository.loadFamily('b');
+  assert.equal(calls.get('b.json'), 2);
+  assert.equal(calls.get('a.json'), 1);
+  assert.equal(repository.resolvedFamilies.size, 3);
+  assert.equal([...repository.promises.keys()].filter(key => key.startsWith('family:')).length, 3);
+});
+
+test('Family LRU never evicts an in-flight request and preserves concurrent request deduplication', async () => {
+  let releaseSlow, startedSlow;
+  const waiting = new Promise(resolve => { releaseSlow = resolve; });
+  const started = new Promise(resolve => { startedSlow = resolve; });
+  const calls = new Map();
+  const repository = new RnaDataRepository({ manifestUrl: 'https://example.org/manifest.json', maxCachedFamilies: 1, fetchImpl: async url => {
+    const file = url.split('/').at(-1);
+    calls.set(file, (calls.get(file) || 0) + 1);
+    if (file === 'manifest.json') return new Response(JSON.stringify({ schema_version: 'rna-explorer-1', molecule_type: 'RNA', build_id: 'a', families: ['slow', 'a', 'b'].map(id => ({ id, path: `${id}.json` })) }));
+    if (file === 'slow.json') { startedSlow(); await waiting; }
+    return new Response(JSON.stringify({ build_id: 'a', rows: [row(file, 10)] }));
+  } });
+  const slow = repository.loadFamily('slow');
+  await started;
+  await repository.loadFamily('a');
+  await repository.loadFamily('b');
+  assert.equal(repository.loadFamily('slow'), slow);
+  assert.equal(repository.resolvedFamilies.size, 1);
+  assert.ok(repository.promises.has('family:slow'));
+  releaseSlow();
+  await slow;
+  assert.equal(calls.get('slow.json'), 1);
+  assert.deepEqual([...repository.resolvedFamilies.keys()], ['family:slow']);
+  assert.equal([...repository.promises.keys()].filter(key => key.startsWith('family:')).length, 1);
+});
+
+test('RNA pair policy defaults to exact and never filters residue or step observations', () => {
+  const pair = (id, extra = {}) => ({ id, pdb_id: '1ABC', residue1_id: 'r1', residue2_id: 'r2', family: 'cWW', pair_label: 'G-U',
+    near: false, alternative: false, stem_eligible: true, values: { opening: 1 }, ...extra });
+  const rows = [pair('exact'), pair('near-flag', { near: true }), pair('near-name', { family: 'ncWW', near: undefined }),
+    pair('alternative-flag', { alternative: true }), pair('alternative-name', { family: 'cWWa', alternative: undefined }),
+    row('unpaired-residue', 3), { id: 'step', pdb_id: '1ABC', pair1_id: 'p1', pair2_id: 'p2', residue_ids: ['r1', 'r2', 'r3', 'r4'], values: { shift: 2 } }];
+  const selected = selectRows(rows);
+  assert.deepEqual(selected.rows.map(item => item.id), ['exact', 'unpaired-residue', 'step']);
+  assert.equal(selected.spec.pairPolicy, 'exact');
+  assert.equal(selected.coverage.pairPolicyExcluded, 4);
+  assert.deepEqual(selectRows(rows, {}, { pairPolicy: 'exact' }).indices, selected.indices);
+  assert.equal(selectRows(rows, {}, { pairPolicy: 'all' }).rows.length, rows.length);
+  assert.deepEqual(selectRows(rows, {}, { pairPolicy: 'near' }).rows.map(item => item.id), ['near-flag', 'near-name', 'unpaired-residue', 'step']);
+});
+
+test('RNA pair family and stem filters preserve noncanonical classes and apply only to pairs', () => {
+  const pair = (id, family, stem_eligible = false) => ({ id, pdb_id: '1ABC', residue1_id: 'r1', residue2_id: 'r2', family,
+    near: family.startsWith('n'), alternative: false, stem_eligible, values: { opening: 1 } });
+  const rows = [pair('watson', 'cWW', true), pair('wobble', 'cWW', true), pair('near', 'ncWW'), pair('hoogsteen', 'tWH'), row('residue', 3)];
+  assert.deepEqual(selectRows(rows, {}, { interactionFamilies: ['tWH'] }).rows.map(item => item.id), ['hoogsteen', 'residue']);
+  assert.deepEqual(selectRows(rows, {}, { pairPolicy: 'all', interactionFamilies: ['cWW'] }).rows.map(item => item.id), ['watson', 'wobble', 'residue']);
+  assert.deepEqual(selectRows(rows, {}, { pairPolicy: 'near', interactionFamilies: ['ncWW'] }).rows.map(item => item.id), ['near', 'residue']);
+  assert.deepEqual(selectRows(rows, {}, { pairPolicy: 'all', stemOnly: true }).rows.map(item => item.id), ['watson', 'wobble', 'residue']);
+});
+
+test('Interaction grouping keeps exact, near and alternative pair observations distinct', () => {
+  const base = { pdb_id: '1ABC', residue1_id: 'r1', residue2_id: 'r2', family: 'cWW', pair_label: 'G-U', values: { opening: 1 } };
+  const rows = selectRows([{ ...base, id: 'exact' }, { ...base, id: 'near', near: true }, { ...base, id: 'alternate', alternative: true }], {}, { pairPolicy: 'all' }).rows;
+  const result = distribution(rows, { id: 'opening' }, { groupBy: 'interaction', sigma: 0 });
+  assert.deepEqual(result.series.map(series => series.key), ['cWW', 'ncWW', 'cWW (alternative)']);
+  assert.deepEqual(result.series.map(series => series.rowIds), [['exact'], ['near'], ['alternate']]);
+  assert.equal(result.coverage.memberships, 3);
+});

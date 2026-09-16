@@ -15,6 +15,23 @@ export function tagValues(value) {
   return Object.entries(value).filter(([, present]) => present === true).map(([key]) => key);
 }
 function matches(tags, selected) { return !selected?.length || selected.some(value => tags.includes(value) || (String(value).toLowerCase() === 'unknown' && !tags.length)); }
+
+export function isPairObservation(row) {
+  return Boolean(row.residue1_id && row.residue2_id) || row.level === 'pair' || row.observation_level === 'pair';
+}
+function pairQualifiers(row) {
+  const family = String(row.family || row.interaction_family || '');
+  return { family, near: row.near === true || /^n[ct]/i.test(family),
+    alternative: row.alternative === true || /^[n]?[ct][WHS]{2}a$/i.test(family) };
+}
+export function interactionFamily(row) {
+  if (!isPairObservation(row)) return 'Unknown';
+  const qualifiers = pairQualifiers(row);
+  let family = qualifiers.family || 'Unknown';
+  if (qualifiers.near && !/^n[ct]/i.test(family)) family = `n${family}`;
+  if (qualifiers.alternative && !/a$/i.test(family)) family += ' (alternative)';
+  return family;
+}
 function profilePasses(entry, profile) {
   if (!profile || profile === 'all') return true;
   const profiles = entry.profiles || entry.component_profiles || entry.eligibility?.profiles;
@@ -43,6 +60,8 @@ export function selectRows(table, metadata = {}, spec = {}) {
   const methodSelection = (spec.methods || (spec.method ? [spec.method] : [])).map(methodKey);
   const resolutionAliases = { le_3_0: 3, le_2_5: 2.5, le_2_0: 2, le_1_5: 1.5 };
   const resolutionMax = spec.resolutionMax ?? resolutionAliases[spec.resolution];
+  const pairPolicy = spec.pairPolicy ?? 'exact';
+  if (!['exact', 'all', 'near'].includes(pairPolicy)) throw new Error(`Unsupported RNA pair policy: ${pairPolicy}`);
   const entryPasses = entry => {
     const methods = (Array.isArray(entry.methods) ? entry.methods : [entry.method || entry.experimental_method]).map(methodKey);
     if (methodSelection.length && !methods.some(method => methodSelection.includes(method))) return false;
@@ -57,9 +76,18 @@ export function selectRows(table, metadata = {}, spec = {}) {
   const eligibleEntries = entries.filter(entryPasses);
   const eligibleIds = new Set(eligibleEntries.map(entryId));
   const rows = [], indices = [], contributing = new Set();
+  let pairPolicyExcluded = 0;
   for (let i = 0; i < source.length; i++) {
     const row = source[i], id = entryId(row), entry = entryMap.get(id) || row.entry || { pdb_id: id };
     if (entryMap.size ? !eligibleIds.has(id) : !entryPasses(entry)) continue;
+    if (isPairObservation(row)) {
+      const qualifiers = pairQualifiers(row);
+      if ((pairPolicy === 'exact' && (qualifiers.near || qualifiers.alternative)) || (pairPolicy === 'near' && !qualifiers.near)) {
+        pairPolicyExcluded++; continue;
+      }
+      if (!matches(qualifiers.family ? [qualifiers.family] : [], spec.interactionFamilies)) continue;
+      if (spec.stemOnly && row.stem_eligible !== true) continue;
+    }
     const entity = entityMap.get(`${id}|${row.entity_id}`) || row.entity;
     const endpointIds = row.endpoint_entities || row.endpoint_entity_ids;
     const scopes = endpointIds?.length ? endpointIds.map(endpoint => {
@@ -81,7 +109,7 @@ export function selectRows(table, metadata = {}, spec = {}) {
     indices.push(i); contributing.add(id);
   }
   return { rows, indices, entries: eligibleEntries, entryIds: [...eligibleIds],
-    spec: structuredClone(spec), coverage: { totalRows: source.length, selectedRows: rows.length,
+    spec: structuredClone({ ...spec, pairPolicy }), coverage: { totalRows: source.length, selectedRows: rows.length, pairPolicyExcluded,
       eligibleEntries: eligibleEntries.length, contributingEntries: contributing.size, excludedRows: source.length - rows.length } };
 }
 

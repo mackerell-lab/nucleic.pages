@@ -9,13 +9,26 @@ export function deepFreeze(value, seen = new WeakSet()) {
 }
 
 export class RnaDataRepository {
-  constructor({ manifestUrl, fetchImpl = globalThis.fetch } = {}) {
+  constructor({ manifestUrl, fetchImpl = globalThis.fetch, maxCachedFamilies = 3 } = {}) {
     if (!manifestUrl) throw new Error('manifestUrl is required');
+    if (!Number.isInteger(maxCachedFamilies) || maxCachedFamilies < 1) throw new Error('maxCachedFamilies must be a positive integer');
     this.manifestUrl = new URL(manifestUrl, globalThis.location?.href || 'http://localhost/').href;
     this.releaseUrl = this.manifestUrl;
     this.fetchImpl = fetchImpl.bind(globalThis);
     this.promises = new Map();
     this.coordinateRequests = new Map();
+    this.maxCachedFamilies = maxCachedFamilies;
+    this.resolvedFamilies = new Map();
+  }
+
+  touchFamily(key, promise) {
+    this.resolvedFamilies.delete(key);
+    this.resolvedFamilies.set(key, promise);
+    while (this.resolvedFamilies.size > this.maxCachedFamilies) {
+      const [oldestKey, oldestPromise] = this.resolvedFamilies.entries().next().value;
+      this.resolvedFamilies.delete(oldestKey);
+      if (this.promises.get(oldestKey) === oldestPromise) this.promises.delete(oldestKey);
+    }
   }
 
   cached(key, loader) {
@@ -23,7 +36,14 @@ export class RnaDataRepository {
       const promise = Promise.resolve().then(loader).then(deepFreeze);
       this.promises.set(key, promise);
       promise.catch(() => { if (this.promises.get(key) === promise) this.promises.delete(key); });
+      if (key.startsWith('family:')) promise.then(() => {
+        // Pending families retain their deduplicated promise until completion.
+        // Eviction releases only repository ownership; active snapshots/callers
+        // keep their own immutable references alive for as long as needed.
+        if (this.promises.get(key) === promise) this.touchFamily(key, promise);
+      }).catch(() => {});
     }
+    else if (this.resolvedFamilies.has(key)) this.touchFamily(key, this.promises.get(key));
     return this.promises.get(key);
   }
 

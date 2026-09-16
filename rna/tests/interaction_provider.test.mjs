@@ -265,4 +265,3 @@ test("FR3D retains RNA O2' stacking and never substitutes base O2",{skip:!availa
   assert.notEqual(first.coordinate_view_hash,second.coordinate_view_hash);
   assert.equal(second.edges.filter(e=>e.family==="s5O2'"&&e.residue2_id===target.id).length,0);
 });
-

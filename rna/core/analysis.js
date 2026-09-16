@@ -1,5 +1,5 @@
 import { normalizeParameter, parameterValue } from './registry.js';
-import { entryId, methodKey, tagValues } from './selection.js';
+import { entryId, methodKey, tagValues, interactionFamily } from './selection.js';
 import { wrapCircular, smoothCounts, summary, correlation } from '../math/numeric.js';
 
 export function groupKeys(row, grouping = 'base') {
@@ -7,6 +7,7 @@ export function groupKeys(row, grouping = 'base') {
   if (grouping === 'none' || !grouping) return ['All'];
   if (grouping === 'base') return [row.comp_id || row.base || row.context || row.sequence_context || row.pair_label || row.step_label || 'Unknown'];
   if (grouping === 'method') return [methodKey(row.method || row.entry?.method || row.entry?.methods?.[0])];
+  if (grouping === 'interaction' || grouping === 'interactionFamily') return [interactionFamily(row)];
   if (grouping === 'function' || grouping === 'structure') {
     const field = grouping === 'function' ? 'functions' : 'structures', tags = tagValues(row[field]);
     if (tags.length) return tags;

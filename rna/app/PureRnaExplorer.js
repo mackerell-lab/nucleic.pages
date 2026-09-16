@@ -16,7 +16,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   constructor(config) {
     super(config);
     this.state = {
-      selection: { components: 'relaxed', methods: ['xray'], resolutionMax: 3, contexts: [], functions: [], subtypes: [], structures: [], puckerStates: [], includeEnds: true },
+      selection: { components: 'relaxed', methods: ['xray'], resolutionMax: 3, contexts: [], functions: [], subtypes: [], structures: [], puckerStates: [], includeEnds: true, pairPolicy: 'exact', interactionFamilies: [], stemOnly: false },
       display: { groupBy: 'base', circularMode: 'wrap_360', sigma: 1.6, normalization: 'probability', fine: true, traceStyle: 'filled' },
       familyId: '', parameterId: 'chi', family2Id: '', parameter2Id: '',
       joint: { mode: 'identity', endpoint: 'both', type: 'heatmap', colorScale: 'linear', palette: 'YlOrRd', labels: false, contourCount: 12 },
@@ -109,7 +109,9 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     }
     this.listen(this.$('universeSearch'), 'input', () => { this.pages.universe = 0; this.renderTable('universe'); });
     this.listen(this.$('familySelect'), 'change', event => {
-      this.state.familyId = event.target.value; this.state.parameterId = this.parameters()[0].id; this.state.selection.contexts = []; this.state.selection.puckerStates = []; this.updateSelectors(); this.requestRender();
+      this.state.familyId = event.target.value; this.state.parameterId = this.parameters()[0].id; this.state.selection.contexts = []; this.state.selection.puckerStates = [];
+      if (this.parameters()[0].level !== 'pair' && this.state.display.groupBy === 'interactionFamily') this.state.display.groupBy = 'base';
+      this.updateSelectors(); this.requestRender();
     });
     this.listen(this.$('parameterSelect'), 'change', event => { this.state.parameterId = event.target.value; this.requestRender(); });
     this.listen(this.$('family2Select'), 'change', event => { this.state.family2Id = event.target.value; this.state.parameter2Id = this.parameters(event.target.value)[0]?.id ?? ''; this.updateSelectors(); this.requestRender(); });
@@ -199,7 +201,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       const finite = uniqueRows.size || result.coverage?.finite || 0;
       this.$('distributionCoverage').textContent = `${number(finite)} unique finite observations from ${number(selection.rows.length)} selected rows. ${number(Math.max(0, selection.rows.length - finite))} rows lack an available finite ${parameter.label ?? parameter.id} value. Function or structure groups may overlap.`;
       this.$('filteredCsvDownload').disabled = false; this.$('plotProvenanceDownload').disabled = false;
-      this.renderTable('filtered'); this.updateContexts(family, state); this.updatePuckerControls(family, state);
+      this.renderTable('filtered'); this.updateContexts(family, state); this.updatePuckerControls(family, state); this.updateInteractionControls(family, state, parameter);
       await this.renderFamilyOverview(selection.rows, state, revision);
     });
     if (!this.current(revision)) return;
@@ -229,6 +231,25 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const temporary = element('div');
     control(temporary, { id: 'puckerGroup', title: 'Ribose Pucker', choices: [{ id: 'all', label: 'All puckers' }, ...states.map(id => ({ id, label: id }))], selected: state.selection.puckerStates?.[0] ?? 'all', select: true, onChange: value => this.setSelection({ puckerStates: value === 'all' ? [] : [value] }), help: 'Recorded ribose pseudorotation sectors. Undefined pucker is retained by the All setting.' });
     if (existing) existing.replaceWith(temporary.firstChild); else this.$('dataControls').append(temporary.firstChild);
+  }
+
+  updateInteractionControls(family, state, parameter) {
+    for (const id of ['pairPolicyGroup', 'interactionFamilyGroup', 'stemScopeGroup']) this.$(id)?.parentElement.remove();
+    const isPair = parameter.level === 'pair';
+    if (isPair) {
+      const parent = this.$('dataControls');
+      control(parent, { id: 'pairPolicyGroup', title: 'Pair Assignment', choices: choices([['exact', 'Exact assignments'], ['all', 'Include near / alternative'], ['near', 'Near assignments only']]), selected: state.selection.pairPolicy, onChange: pairPolicy => this.setSelection({ pairPolicy }), help: 'Exact excludes FR3D near and alternative assignments. Near selects the recorded near flag. This policy affects pair observations, not unpaired residue measurements or precomputed steps.' });
+      const families = [...new Set(rowsOf(family).map(row => row.family ?? row.interaction_family).filter(value => typeof value === 'string'))].sort();
+      control(parent, { id: 'interactionFamilyGroup', title: 'Interaction Family', choices: [{ id: 'all', label: 'All identified pair families' }, ...families.map(id => ({ id, label: id }))], selected: state.selection.interactionFamilies?.[0] ?? 'all', select: true, onChange: value => this.setSelection({ interactionFamilies: value === 'all' ? [] : [value] }), help: 'FR3D interaction-family labels retain cis/trans orientation and Watson–Crick, Hoogsteen, and sugar-edge identities. cWW alone does not establish canonical chemistry.' });
+      control(parent, { id: 'stemScopeGroup', title: 'Local Stem Eligibility', choices: choices([['all', 'All identified pairs'], ['stem', 'Supported stem pairs']]), selected: state.selection.stemOnly ? 'stem' : 'all', onChange: value => this.setSelection({ stemOnly: value === 'stem' }), help: 'Uses the dataset’s explicit stem_eligible flag for supported AU/GC and conventional GU pairs. It does not require the whole RNA molecule to form a duplex.' });
+    }
+    const grouping = this.$('groupingGroup')?.parentElement;
+    if (grouping) {
+      const items = [['base', 'Sequence context'], ['method', 'Method'], ['function', 'Function'], ['structure', 'Structure tag'], ['none', 'All observations']];
+      if (isPair) items.splice(1, 0, ['interactionFamily', 'Interaction family']);
+      const temporary = element('div'); control(temporary, { id: 'groupingGroup', title: 'Group Curves By', choices: choices(items), selected: state.display.groupBy, onChange: groupBy => this.setDisplay({ groupBy }) });
+      grouping.replaceWith(temporary.firstChild);
+    }
   }
 
   async renderFamilyOverview(rows, state, revision) {
@@ -295,8 +316,9 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const parameter = normalizeParameter(term);
     let termRows = selection.rows.filter(row => (row.term_id ?? row.term) === term.id);
     let openingIndex = null;
-    if (state.survey.opening === 'bins' || state.survey.ranking) openingIndex = await this.openingIndex(state);
+    if (state.survey.opening === 'bins' || state.survey.ranking || parameter.level === 'pair') openingIndex = await this.openingIndex(state);
     if (!this.current(revision)) return;
+    if (parameter.level === 'pair') termRows = termRows.filter(row => openingIndex.pairs.has(row.pair_id));
     if (state.survey.opening === 'bins') termRows = this.openingIncidences(termRows, openingIndex);
     const display = { ...this.displaySpec(state.display, parameter), groupBy: state.survey.opening === 'bins' ? 'opening_bin' : state.display.groupBy };
     const result = this.decorate(distribution(termRows, parameter, display));
@@ -401,6 +423,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const groupChoices = Object.keys(this.manifest.survey.coordinates.groups ?? {});
     const group = groupChoices.includes(state.survey.coordinateGroup) ? state.survey.coordinateGroup : groupChoices.find(key => key.includes('cytosine_standard_pair')) ?? groupChoices[0];
     const eligible = selectRows([], this.metadata, state.selection).entryIds;
+    const eligiblePairs = group?.includes('cytosine_standard_pair') ? (await this.openingIndex(state)).pairs : null;
+    if (!this.current(revision)) return;
     const repository = this.repository;
     const chunks = repository.iterateSurveyCoordinates ? repository.iterateSurveyCoordinates(group, { entryIds: eligible }) : (async function* () { yield await repository.loadSurveyCoordinates(group); })();
     const groups = new Map(); const contextSet = new Set();
@@ -408,6 +432,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       if (!this.current(revision)) return;
       const selection = selectRows(chunk, this.metadata, { ...state.selection, contexts: [] });
       for (const row of selection.rows) {
+        if (eligiblePairs && (!row.pair_id || !eligiblePairs.has(row.pair_id))) continue;
         const context = row.context ?? row.sequence_context ?? row.base ?? row.base_code;
         if (context) contextSet.add(context);
         if (state.survey.coordinateContext !== 'all' && context !== state.survey.coordinateContext) continue;

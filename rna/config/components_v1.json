@@ -1,0 +1,10 @@
+{
+  "default": "dna_compatible_relaxed_v1",
+  "mass_basis": "selected_conformer_modeled_atoms",
+  "profiles": {
+    "all_associated_components": "No extra component filter",
+    "dna_compatible_conservative_v1": "No nonwater extra modeled groups",
+    "dna_compatible_relaxed_v1": "Every group carbon-free with at most 8 modeled atoms and estimated modeled mass <=250 Da",
+    "dna_compatible_mw100_v1": "Every group estimated modeled mass <=100 Da"
+  }
+}

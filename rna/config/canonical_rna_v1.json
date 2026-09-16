@@ -1,0 +1,18 @@
+{
+  "id": "canonical_rna_v1",
+  "molecule_type": "RNA",
+  "allowed_polymers": [
+    "polyribonucleotide"
+  ],
+  "canonical_monomers": [
+    "A",
+    "C",
+    "G",
+    "U"
+  ],
+  "sequence_scope": "full_declared_sequence",
+  "nakb_composition_conflicts": "exclude_pending_review",
+  "computed_models": false,
+  "unknown_annotation": "retain",
+  "assembly": "deposited_asymmetric_unit"
+}

@@ -1,0 +1,704 @@
+[
+  {
+    "param_id": "shear",
+    "family_id": "base_pair",
+    "display_name": "Shear",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -3,
+      3
+    ],
+    "observation_level": "pair",
+    "rna_disposition": "conditional_pair_frame",
+    "id": "shear",
+    "family": "base_pair",
+    "level": "pair",
+    "label": "Shear",
+    "period": null
+  },
+  {
+    "param_id": "stretch",
+    "family_id": "base_pair",
+    "display_name": "Stretch",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -1,
+      1
+    ],
+    "observation_level": "pair",
+    "rna_disposition": "conditional_pair_frame",
+    "id": "stretch",
+    "family": "base_pair",
+    "level": "pair",
+    "label": "Stretch",
+    "period": null
+  },
+  {
+    "param_id": "stagger",
+    "family_id": "base_pair",
+    "display_name": "Stagger",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -2,
+      2
+    ],
+    "observation_level": "pair",
+    "rna_disposition": "conditional_pair_frame",
+    "id": "stagger",
+    "family": "base_pair",
+    "level": "pair",
+    "label": "Stagger",
+    "period": null
+  },
+  {
+    "param_id": "buckle",
+    "family_id": "base_pair",
+    "display_name": "Buckle",
+    "unit": "deg",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -40,
+      40
+    ],
+    "observation_level": "pair",
+    "rna_disposition": "conditional_pair_frame",
+    "id": "buckle",
+    "family": "base_pair",
+    "level": "pair",
+    "label": "Buckle",
+    "period": null
+  },
+  {
+    "param_id": "propeller",
+    "family_id": "base_pair",
+    "display_name": "Propeller",
+    "unit": "deg",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -40,
+      10
+    ],
+    "observation_level": "pair",
+    "rna_disposition": "conditional_pair_frame",
+    "id": "propeller",
+    "family": "base_pair",
+    "level": "pair",
+    "label": "Propeller",
+    "period": null
+  },
+  {
+    "param_id": "opening",
+    "family_id": "base_pair",
+    "display_name": "Opening",
+    "unit": "deg",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -20,
+      20
+    ],
+    "observation_level": "pair",
+    "rna_disposition": "conditional_pair_frame",
+    "id": "opening",
+    "family": "base_pair",
+    "level": "pair",
+    "label": "Opening",
+    "period": null
+  },
+  {
+    "param_id": "shift",
+    "family_id": "step",
+    "display_name": "Shift",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -4,
+      4
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "shift",
+    "family": "step",
+    "level": "step",
+    "label": "Shift",
+    "period": null
+  },
+  {
+    "param_id": "slide",
+    "family_id": "step",
+    "display_name": "Slide",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -7,
+      3
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "slide",
+    "family": "step",
+    "level": "step",
+    "label": "Slide",
+    "period": null
+  },
+  {
+    "param_id": "rise",
+    "family_id": "step",
+    "display_name": "Rise",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      1,
+      6
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "rise",
+    "family": "step",
+    "level": "step",
+    "label": "Rise",
+    "period": null
+  },
+  {
+    "param_id": "tilt",
+    "family_id": "step",
+    "display_name": "Tilt",
+    "unit": "deg",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -25,
+      25
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "tilt",
+    "family": "step",
+    "level": "step",
+    "label": "Tilt",
+    "period": null
+  },
+  {
+    "param_id": "roll",
+    "family_id": "step",
+    "display_name": "Roll",
+    "unit": "deg",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -25,
+      35
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "roll",
+    "family": "step",
+    "level": "step",
+    "label": "Roll",
+    "period": null
+  },
+  {
+    "param_id": "twist",
+    "family_id": "step",
+    "display_name": "Twist",
+    "unit": "deg",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -65,
+      55
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "twist",
+    "family": "step",
+    "level": "step",
+    "label": "Twist",
+    "period": null
+  },
+  {
+    "param_id": "x_disp",
+    "family_id": "helical",
+    "display_name": "X-disp",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -8,
+      8
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "x_disp",
+    "family": "helical",
+    "level": "step",
+    "label": "X-disp",
+    "period": null
+  },
+  {
+    "param_id": "y_disp",
+    "family_id": "helical",
+    "display_name": "Y-disp",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -8,
+      8
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "y_disp",
+    "family": "helical",
+    "level": "step",
+    "label": "Y-disp",
+    "period": null
+  },
+  {
+    "param_id": "h_rise",
+    "family_id": "helical",
+    "display_name": "h-Rise",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      0,
+      6
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "h_rise",
+    "family": "helical",
+    "level": "step",
+    "label": "h-Rise",
+    "period": null
+  },
+  {
+    "param_id": "inclination",
+    "family_id": "helical",
+    "display_name": "Inclination",
+    "unit": "deg",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -60,
+      50
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "inclination",
+    "family": "helical",
+    "level": "step",
+    "label": "Inclination",
+    "period": null
+  },
+  {
+    "param_id": "tip",
+    "family_id": "helical",
+    "display_name": "Tip",
+    "unit": "deg",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -50,
+      80
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "tip",
+    "family": "helical",
+    "level": "step",
+    "label": "Tip",
+    "period": null
+  },
+  {
+    "param_id": "h_twist",
+    "family_id": "helical",
+    "display_name": "h-Twist",
+    "unit": "deg",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -65,
+      60
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "h_twist",
+    "family": "helical",
+    "level": "step",
+    "label": "h-Twist",
+    "period": null
+  },
+  {
+    "param_id": "lambda_1",
+    "family_id": "pair_quality",
+    "display_name": "lambda(I)",
+    "unit": "deg",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      0,
+      90
+    ],
+    "observation_level": "pair",
+    "rna_disposition": "conditional_pair_frame",
+    "id": "lambda_1",
+    "family": "pair_quality",
+    "level": "pair",
+    "label": "lambda(I)",
+    "period": null
+  },
+  {
+    "param_id": "lambda_2",
+    "family_id": "pair_quality",
+    "display_name": "lambda(II)",
+    "unit": "deg",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      0,
+      90
+    ],
+    "observation_level": "pair",
+    "rna_disposition": "conditional_pair_frame",
+    "id": "lambda_2",
+    "family": "pair_quality",
+    "level": "pair",
+    "label": "lambda(II)",
+    "period": null
+  },
+  {
+    "param_id": "c1c1",
+    "family_id": "pair_quality",
+    "display_name": "C1'-C1'",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      6,
+      14
+    ],
+    "observation_level": "pair",
+    "rna_disposition": "conditional_pair_frame",
+    "id": "c1c1",
+    "family": "pair_quality",
+    "level": "pair",
+    "label": "C1'-C1'",
+    "period": null
+  },
+  {
+    "param_id": "rn9_yn1",
+    "family_id": "pair_quality",
+    "display_name": "RN9-YN1",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      6,
+      12
+    ],
+    "observation_level": "pair",
+    "rna_disposition": "conditional_pair_frame",
+    "id": "rn9_yn1",
+    "family": "pair_quality",
+    "level": "pair",
+    "label": "RN9-YN1",
+    "period": null
+  },
+  {
+    "param_id": "rc8_yc6",
+    "family_id": "pair_quality",
+    "display_name": "RC8-YC6",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      6,
+      12
+    ],
+    "observation_level": "pair",
+    "rna_disposition": "conditional_pair_frame",
+    "id": "rc8_yc6",
+    "family": "pair_quality",
+    "level": "pair",
+    "label": "RC8-YC6",
+    "period": null
+  },
+  {
+    "param_id": "xp",
+    "family_id": "step_position",
+    "display_name": "Xp",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -5,
+      2
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "xp",
+    "family": "step_position",
+    "level": "step",
+    "label": "Xp",
+    "period": null
+  },
+  {
+    "param_id": "yp",
+    "family_id": "step_position",
+    "display_name": "Yp",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      5,
+      11
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "yp",
+    "family": "step_position",
+    "level": "step",
+    "label": "Yp",
+    "period": null
+  },
+  {
+    "param_id": "zp",
+    "family_id": "step_position",
+    "display_name": "Zp",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -3,
+      4
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "zp",
+    "family": "step_position",
+    "level": "step",
+    "label": "Zp",
+    "period": null
+  },
+  {
+    "param_id": "xph",
+    "family_id": "step_position",
+    "display_name": "XpH",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -12,
+      4
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "xph",
+    "family": "step_position",
+    "level": "step",
+    "label": "XpH",
+    "period": null
+  },
+  {
+    "param_id": "yph",
+    "family_id": "step_position",
+    "display_name": "YpH",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      0,
+      11
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "yph",
+    "family": "step_position",
+    "level": "step",
+    "label": "YpH",
+    "period": null
+  },
+  {
+    "param_id": "zph",
+    "family_id": "step_position",
+    "display_name": "ZpH",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      -4,
+      10
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "zph",
+    "family": "step_position",
+    "level": "step",
+    "label": "ZpH",
+    "period": null
+  },
+  {
+    "param_id": "strand_i_p_p",
+    "family_id": "same_strand",
+    "display_name": "Strand I P--P",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      4,
+      10
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "strand_i_p_p",
+    "family": "same_strand",
+    "level": "step",
+    "label": "Strand I P--P",
+    "period": null
+  },
+  {
+    "param_id": "strand_i_c1_c1",
+    "family_id": "same_strand",
+    "display_name": "Strand I C1'--C1'",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      3,
+      8
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "strand_i_c1_c1",
+    "family": "same_strand",
+    "level": "step",
+    "label": "Strand I C1'--C1'",
+    "period": null
+  },
+  {
+    "param_id": "strand_ii_p_p",
+    "family_id": "same_strand",
+    "display_name": "Strand II P--P",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      4,
+      10
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "strand_ii_p_p",
+    "family": "same_strand",
+    "level": "step",
+    "label": "Strand II P--P",
+    "period": null
+  },
+  {
+    "param_id": "strand_ii_c1_c1",
+    "family_id": "same_strand",
+    "display_name": "Strand II C1'--C1'",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      3,
+      8
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "strand_ii_c1_c1",
+    "family": "same_strand",
+    "level": "step",
+    "label": "Strand II C1'--C1'",
+    "period": null
+  },
+  {
+    "param_id": "strand_i_p_radius",
+    "family_id": "helix_radius",
+    "display_name": "Strand I P radius",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      0,
+      15
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "strand_i_p_radius",
+    "family": "helix_radius",
+    "level": "step",
+    "label": "Strand I P radius",
+    "period": null
+  },
+  {
+    "param_id": "strand_i_o4_radius",
+    "family_id": "helix_radius",
+    "display_name": "Strand I O4' radius",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      0,
+      12
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "strand_i_o4_radius",
+    "family": "helix_radius",
+    "level": "step",
+    "label": "Strand I O4' radius",
+    "period": null
+  },
+  {
+    "param_id": "strand_i_c1_radius",
+    "family_id": "helix_radius",
+    "display_name": "Strand I C1' radius",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      0,
+      12
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "strand_i_c1_radius",
+    "family": "helix_radius",
+    "level": "step",
+    "label": "Strand I C1' radius",
+    "period": null
+  },
+  {
+    "param_id": "strand_ii_p_radius",
+    "family_id": "helix_radius",
+    "display_name": "Strand II P radius",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      0,
+      15
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "strand_ii_p_radius",
+    "family": "helix_radius",
+    "level": "step",
+    "label": "Strand II P radius",
+    "period": null
+  },
+  {
+    "param_id": "strand_ii_o4_radius",
+    "family_id": "helix_radius",
+    "display_name": "Strand II O4' radius",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      0,
+      12
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "strand_ii_o4_radius",
+    "family": "helix_radius",
+    "level": "step",
+    "label": "Strand II O4' radius",
+    "period": null
+  },
+  {
+    "param_id": "strand_ii_c1_radius",
+    "family_id": "helix_radius",
+    "display_name": "Strand II C1' radius",
+    "unit": "\u00c5",
+    "value_type": "numeric_linear",
+    "display_range_default": [
+      0,
+      12
+    ],
+    "observation_level": "step",
+    "rna_disposition": "conditional_supported_stem",
+    "id": "strand_ii_c1_radius",
+    "family": "helix_radius",
+    "level": "step",
+    "label": "Strand II C1' radius",
+    "period": null
+  }
+]

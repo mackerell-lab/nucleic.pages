@@ -201,7 +201,11 @@ try {
   await page.click('#coordinatesLoad');
   await page.waitForFunction(() => document.querySelector('#baseGeometryCoordBody')?.rows.length > 0, null, { timeout: 120000 });
   assert(fetched(report.responses, coordinatesPaths), 'Coordinate request did not fetch real asset');
-  record('Scalar and coordinate surveys load independently', { scalarPartitions: scalarPaths.length, coordinatePartitions: coordinatesPaths.length, coordinateRows: await page.locator('#baseGeometryCoordBody tr').count() });
+  const coordinateHeaders = await page.locator('#coordinateBody thead th').allTextContents();
+  assert.deepEqual(coordinateHeaders, ['Atom', 'Observations', 'Residues', 'Pairs', 'PDB entries', 'Mean x (Å)', 'Mean y (Å)', 'Mean z (Å)', 'RMS spread (Å)']);
+  const coordinateRows = await page.locator('#baseGeometryCoordBody tr').count();
+  if (coordinateRows) assert((await page.locator('#baseGeometryCoordBody tr').first().locator('td').count()) === 9, 'Coordinate table columns shifted');
+  record('Scalar and coordinate surveys load independently', { scalarPartitions: scalarPaths.length, coordinatePartitions: coordinatesPaths.length, coordinateRows, coordinateHeaders });
   await page.screenshot({ path: path.join(output, 'rna-survey-desktop.png'), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });

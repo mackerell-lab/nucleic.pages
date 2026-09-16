@@ -108,7 +108,7 @@ export function summaryCards(parent, result) {
   cards(parent, (result.series ?? []).map(series => {
     const stat = series.statistics ?? {};
     const circular = Boolean(result.parameter?.period);
-    const metrics = [['Mean', stat.mean ?? stat.circularMean ?? stat.circular_mean], [circular ? 'Circular std. deviation' : 'Std. deviation', stat.sd ?? stat.std ?? stat.standardDeviation ?? stat.circularStd], ...(circular ? [['Resultant length', stat.resultant], ['Smoothed peak', stat.peak]] : [['P05', stat.p05 ?? stat.q05], ['P95', stat.p95 ?? stat.q95]])];
+    const metrics = [['Rows', stat.n ?? series.values?.length ?? series.rows?.length ?? 0], ['PDBs', stat.pdbCount], ['Mean', stat.mean ?? stat.circularMean ?? stat.circular_mean], [circular ? 'Circular std. deviation' : 'Std. deviation', stat.sd ?? stat.std ?? stat.standardDeviation ?? stat.circularStd], ...(circular ? [['Resultant length', stat.resultant], ['Smoothed peak', stat.peak]] : [['P05', stat.p05 ?? stat.q05], ['P95', stat.p95 ?? stat.q95]])];
     return { title: series.label ?? series.key, kind: circular ? 'Circular distribution' : 'Linear distribution', detail: `${number(series.values?.length ?? series.rows?.length ?? stat.n ?? 0)} finite observations${circular ? '. Resultant length measures angular concentration (0–1). Circular percentiles are not reported; the peak depends on binning and smoothing.' : ''}`, metrics: metrics.map(([name, value]) => [name, Number.isFinite(value) ? number(value) : 'Undefined']) };
   }));
 }

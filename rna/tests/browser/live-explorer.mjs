@@ -84,6 +84,8 @@ try {
   const initial = await verifyDistribution('initial-distribution');
   assert(initial.result.coverage.plottedRows > 0, 'Default real-data selection is empty');
   assert.equal(initial.result.parameter.id, 'chi');
+  const summaryLabels = await page.locator('#seriesSummary .metric-label').allTextContents();
+  assert(summaryLabels.includes('Rows') && summaryLabels.includes('PDBs'), 'Series summary lacks DNA-compatible row and PDB counts');
   assert(!report.responses.some(response => /assets\/pure_dna\//.test(response.url)), 'RNA fetched DNA datasets');
   const initiallyFetched = [...report.responses];
   const contexts = await page.locator('#contextGroup button').allTextContents();
@@ -149,6 +151,7 @@ try {
   await page.selectOption('#parameter2Select', 'chi');
   await page.locator('#jointJoinModeGroup button').filter({ hasText: 'Pair' }).click();
   await waitReady(page);
+  await page.waitForFunction(() => window.rnaExplorer.snapshots.joint?.result?.points?.length > 0, null, { timeout: 120000 });
   const endpointJoint = await snapshot('joint');
   assert(endpointJoint.result.points.length > 0, 'Real supported pair-to-residue view is empty');
   const endpointCsv = await downloadCsv(page, '#jointCsvDownload', path.join(output, 'joint-opening-chi-endpoints.csv'));

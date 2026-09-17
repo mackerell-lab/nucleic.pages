@@ -30,12 +30,23 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     };
     this.pages = { universe: 0, filtered: 0 }; this.filteredEntries = []; this.contributing = new Set();
     this.rankingCache = new Map();
+    this.entitiesByEntry = new Map(); this.entrySearchText = new Map();
   }
 
   async start() {
     this.manifest = await this.repository.loadManifest();
     this.metadata = await this.repository.loadMetadata();
     this.entries = this.metadata.entries ?? rowsOf(this.metadata);
+    for (const entity of this.metadata.entities ?? []) {
+      const id = entryId(entity); if (!id) continue;
+      if (!this.entitiesByEntry.has(id)) this.entitiesByEntry.set(id, []);
+      this.entitiesByEntry.get(id).push(entity);
+    }
+    for (const entry of this.entries) {
+      const entities = this.entitiesByEntry.get(entryId(entry)) ?? [];
+      const searchableEntityFields = entities.flatMap(entity => ['entity_id', 'description', 'polymer_type', 'functions', 'function_tags', 'structures', 'structural_tags', 'subtypes', 'rna_types', 'annotation_tags'].map(key => entity[key]));
+      this.entrySearchText.set(entryId(entry), JSON.stringify([entry, ...searchableEntityFields]).toLowerCase());
+    }
     this.families = Array.isArray(this.manifest.families) ? this.manifest.families : Object.entries(this.manifest.families ?? {}).map(([id, family]) => ({ id, ...family }));
     if (!this.families.length) throw new Error('The RNA release does not contain any available parameter families.');
     const defaultFamily = this.families.find(family => familyParameters(this.manifest, family.id).some(parameter => parameter.id === 'chi')) ?? this.families[0];
@@ -183,14 +194,27 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.renderTable('universe');
   }
 
+  entryEntities(entry) {
+    return this.entitiesByEntry.get(entryId(entry)) ?? [];
+  }
+
   renderTable(name) {
     let entries = name === 'universe' ? this.entries : this.filteredEntries;
-    if (name === 'universe') { const search = this.$('universeSearch').value.trim().toLowerCase(); if (search) entries = entries.filter(entry => JSON.stringify(entry).toLowerCase().includes(search)); }
+    if (name === 'universe') {
+      const search = this.$('universeSearch').value.trim().toLowerCase();
+      if (search) entries = entries.filter(entry => this.entrySearchText.get(entryId(entry))?.includes(search));
+    }
     const pages = Math.max(1, Math.ceil(entries.length / 100)); this.pages[name] = Math.max(0, Math.min(this.pages[name], pages - 1));
     const page = this.pages[name];
     const visible = entries.slice(page * 100, (page + 1) * 100).map(entry => {
-      const entities = (this.metadata.entities ?? []).filter(entity => entryId(entity) === entryId(entry));
-      return { ...entry, functions: [...new Set(entities.flatMap(entity => labels(entity.functions)).concat(labels(entry.functions)))].map(annotationLabel), structures: [...new Set(entities.flatMap(entity => labels(entity.structures)).concat(labels(entry.structures)))].map(annotationLabel) };
+      const entities = this.entryEntities(entry);
+      const functions = entities.flatMap(entity => labels(entity.functions ?? entity.function_tags));
+      const structures = entities.flatMap(entity => labels(entity.structures ?? entity.structural_tags));
+      const subtypes = entities.flatMap(entity => labels(entity.subtypes ?? entity.rna_types));
+      return { ...entry,
+        functions: [...new Set(functions.concat(labels(entry.functions ?? entry.function_tags)))].map(annotationLabel),
+        structures: [...new Set(structures.concat(subtypes, labels(entry.structures ?? entry.structural_tags)))].map(annotationLabel),
+      };
     });
     tableRows(this.$(`${name}TableBody`), visible, name === 'filtered' ? this.contributing : null);
     this.$(`${name}PageLabel`).textContent = `Page ${page + 1} / ${pages} · ${number(entries.length)} entries`;

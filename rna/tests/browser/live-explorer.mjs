@@ -98,12 +98,31 @@ try {
   await page.click('#universeToggle');
   assert(await page.locator('#universeDrawer').isVisible());
   assert(await page.locator('#universeTableBody tr').count() > 0);
+  const entityAnnotation = await page.evaluate(() => {
+    const app = window.rnaExplorer;
+    for (const entity of app.metadata.entities ?? []) {
+      const pdbId = String(entity.pdb_id ?? entity.entry_id ?? '').toUpperCase();
+      const entry = app.entries.find(item => String(item.pdb_id ?? item.entry_id ?? '').toUpperCase() === pdbId);
+      if (!entry || !pdbId) continue;
+      const entryText = JSON.stringify(entry).toLowerCase();
+      const values = [entity.functions, entity.function_tags, entity.structures, entity.structural_tags, entity.subtypes, entity.rna_types, entity.annotation_tags]
+        .flatMap(value => Array.isArray(value) ? value : value == null ? [] : [value])
+        .filter(value => typeof value === 'string' && value.length > 2);
+      const value = values.find(item => !entryText.includes(item.toLowerCase()));
+      if (value) return { pdbId, value };
+    }
+    return null;
+  });
+  assert(entityAnnotation, 'Full RNA metadata has no entity-only annotation probe');
+  await page.fill('#universeSearch', entityAnnotation.value);
+  const searchedPdbs = await page.locator('#universeTableBody a').allTextContents();
+  assert(searchedPdbs.includes(entityAnnotation.pdbId), 'Entity-scoped annotation search missed its PDB entry');
   await page.fill('#universeSearch', 'THIS_ID_DOES_NOT_EXIST');
   assert.equal(await page.locator('#universeTableBody a').count(), 0);
   await page.fill('#universeSearch', '');
   await page.click('#filteredToggle');
   assert(await page.locator('#filteredDrawer').isVisible());
-  record('Entry table drawers and search', {});
+  record('Entry table drawers and entity annotation search', entityAnnotation);
 
   // Controls capture a fresh render revision. Two unresolved renders must never
   // commit the first selection after the second one completes.

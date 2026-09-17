@@ -15,7 +15,7 @@ export function options(select, items, selected) {
   select.replaceChildren(...items.map(item => element('option', { value: item.id }, item.label ?? item.id)));
   if (items.some(item => item.id === selected)) select.value = selected;
 }
-export function control(parent, { id, title, choices, selected, multi = false, help, onChange, select = false }) {
+export function control(parent, { id, title, choices, selected, multi = false, help, onChange, select = false, allLabel = null }) {
   const cluster = element('div', { className: 'filter-cluster' });
   const label = element('span', { className: 'cluster-title' }, title);
   if (help) label.title = help;
@@ -28,15 +28,18 @@ export function control(parent, { id, title, choices, selected, multi = false, h
   } else {
     const group = element('div', { id, className: `toggle-group${multi ? ' multi' : ''}`, role: 'group', 'aria-label': title });
     const current = new Set(multi ? selected : [selected]);
-    for (const choice of choices) {
-      const button = element('button', { type: 'button', className: `toggle-btn${current.has(choice.id) ? ' active' : ''}`, 'data-value': choice.id, 'aria-pressed': String(current.has(choice.id)) }, choice.label ?? choice.id);
+    const items = multi && allLabel ? [{ label: allLabel, all: true }, ...choices] : choices;
+    const isActive = choice => choice.all ? current.size === 0 : current.has(choice.id);
+    for (const choice of items) {
+      const button = element('button', { type: 'button', className: `toggle-btn${isActive(choice) ? ' active' : ''}`, ...(choice.all ? { 'data-all': 'true' } : { 'data-value': choice.id }), 'aria-pressed': String(isActive(choice)) }, choice.label ?? choice.id);
       if (choice.help) button.title = choice.help;
       button.addEventListener('click', () => {
         if (multi) {
-          if (current.has(choice.id)) current.delete(choice.id); else current.add(choice.id);
+          if (choice.all) current.clear();
+          else if (current.has(choice.id)) current.delete(choice.id); else current.add(choice.id);
         } else { current.clear(); current.add(choice.id); }
         for (const other of group.children) {
-          const active = current.has(other.dataset.value);
+          const active = other.dataset.all === 'true' ? current.size === 0 : current.has(other.dataset.value);
           other.classList.toggle('active', active); other.setAttribute('aria-pressed', String(active));
         }
         onChange(multi ? [...current] : choice.id);

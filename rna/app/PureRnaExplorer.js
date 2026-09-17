@@ -75,7 +75,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     for (const [id, title, key, aliases] of [['functionGroup', 'RNA Function (NAKB)', 'functions', ['function_tags']], ['subtypeGroup', 'RNA Type (NAKB)', 'subtypes', ['rna_types']], ['structureGroup', 'Structure Tags (NAKB)', 'structures', ['structural_tags']]]) {
       control(data, { id, title, choices: this.annotationChoices(key, aliases), selected: selection[key]?.[0] ?? 'all', select: true, onChange: value => this.setSelection({ [key]: value === 'all' ? [] : [value] }), help: 'Annotations can overlap. Entity-specific annotations select their RNA observations. Pair and step filters require all recorded endpoint entities to match.' });
     }
-    choice('contextGroup', 'Sequence Context', [['A', 'A'], ['C', 'C'], ['G', 'G'], ['U', 'U']], selection.contexts, contexts => this.setSelection({ contexts }), { multi: true, help: 'No selected context includes all contexts. The choices adapt to the observation family.' });
+    choice('contextGroup', 'Sequence Context', [['A', 'A'], ['C', 'C'], ['G', 'G'], ['U', 'U']], selection.contexts, contexts => this.setSelection({ contexts }), { multi: true, allLabel: 'All contexts', help: 'All contexts includes every recorded context. Choose individual contexts to narrow the population.' });
     choice('terminalGroup', 'Terminal Policy', [['include', 'Include ends'], ['exclude', 'Exclude ends']], selection.includeEnds ? 'include' : 'exclude', value => this.setSelection({ includeEnds: value === 'include' }), { help: 'Includes finite terminal measurements by default. Missing covalent neighbors still make dependent torsions unavailable.' });
     choice('groupingGroup', 'Group Curves By', [['base', 'Sequence context'], ['method', 'Method'], ['function', 'Function'], ['structure', 'Structure tag'], ['none', 'All observations']], display.groupBy, groupBy => this.setDisplay({ groupBy }));
     const visualChoice = (id, title, values, selected, action, help) => control(visual, { id, title, choices: choices(values), selected, onChange: action, help });
@@ -92,8 +92,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const add = (parent, id, title, values, selected, key) => control(this.$(parent), { id, title, choices: choices(values), selected, onChange: value => { this.state.joint[key] = key === 'labels' ? value === 'on' : key === 'contourCount' ? Number(value) : value; this.requestJointOnly(); } });
     add('jointControls', 'jointJoinModeGroup', 'Join Mode', [['identity', 'Same observation'], ['relation', 'Pair → Residue']], joint.mode, 'mode');
     add('jointControls', 'jointResidueSideGroup', 'Residue Side', [['both', 'Both'], ['nt1', 'nt1'], ['nt2', 'nt2']], joint.endpoint, 'endpoint');
-    control(this.$('jointControls'), { id: 'jointResidueContextGroup', title: 'Residue Context', choices: choices(['A', 'C', 'G', 'U'].map(base => [base, base])), selected: joint.residueContexts ?? [], multi: true,
-      onChange: value => { this.state.joint.residueContexts = value; this.requestJointOnly(); }, help: 'Independent endpoint selection for the joint plot. No selected base includes all RNA bases; the 1D selection is unchanged.' });
+    control(this.$('jointControls'), { id: 'jointResidueContextGroup', title: 'Residue Context', choices: choices(['A', 'C', 'G', 'U'].map(base => [base, base])), selected: joint.residueContexts ?? [], multi: true, allLabel: 'All contexts',
+      onChange: value => { this.state.joint.residueContexts = value; this.requestJointOnly(); }, help: 'Independent endpoint selection for the joint plot. All contexts includes all RNA bases; the 1D selection is unchanged.' });
     add('jointDisplayControls', 'jointPlotTypeGroup', 'Plot Type', [['heatmap', 'Heatmap'], ['contour', 'Contour'], ['filled_contour', 'Filled contour'], ['heatmap_contour', 'Heatmap + contour']], joint.type, 'type');
     add('jointDisplayControls', 'jointContourLabelsGroup', 'Contour Labels', [['off', 'Off'], ['on', 'On']], joint.labels ? 'on' : 'off', 'labels');
     add('jointDisplayControls', 'jointContourWidthGroup', 'Contour Spacing', [['6', 'Wide'], ['12', 'Standard'], ['24', 'Tight']], String(joint.contourCount), 'contourCount');
@@ -255,7 +255,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const values = [...new Set(rowsOf(family).map(row => row.context ?? row.sequence_context ?? row.pair_label ?? row.step_label ?? row.base ?? row.base_code ?? row.comp_id).filter(Boolean))].sort();
     if (!values.length) return;
     const old = this.$('contextGroup'); const cluster = old?.parentElement; if (!cluster) return;
-    const temporary = element('div'); control(temporary, { id: 'contextGroup', title: 'Sequence Context', choices: values.map(id => ({ id, label: id })), selected: state.selection.contexts, multi: true, onChange: contexts => this.setSelection({ contexts }) }); cluster.replaceWith(temporary.firstChild);
+    const temporary = element('div'); control(temporary, { id: 'contextGroup', title: 'Sequence Context', choices: values.map(id => ({ id, label: id })), selected: state.selection.contexts, multi: true, allLabel: 'All contexts', onChange: contexts => this.setSelection({ contexts }) }); cluster.replaceWith(temporary.firstChild);
   }
 
   updatePuckerControls(family, state) {
@@ -385,8 +385,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       options(this.$('baseGeometryTermSelect'), available, term.id); this.state.survey.termId = term.id;
       this.$('surveyContextControls').replaceChildren();
       const contexts = [...new Set([...normalized.map(surveyContext), ...(state.survey.contexts ?? [])])].sort();
-      control(this.$('surveyContextControls'), { id: 'baseGeometryContextGroup', title: 'Survey Context', choices: contexts.map(id => ({ id, label: id })), selected: state.survey.contexts ?? [], multi: true,
-        onChange: contexts => { this.state.survey.contexts = contexts; this.requestRender(); }, help: 'Independent survey context selection. No selected context includes all recorded contexts; global entry and annotation filters still apply.' });
+      control(this.$('surveyContextControls'), { id: 'baseGeometryContextGroup', title: 'Survey Context', choices: contexts.map(id => ({ id, label: id })), selected: state.survey.contexts ?? [], multi: true, allLabel: 'All contexts',
+        onChange: contexts => { this.state.survey.contexts = contexts; this.requestRender(); }, help: 'Independent survey context selection. All contexts includes all recorded contexts; global entry and annotation filters still apply.' });
       this.$('surveyDefinition').textContent = this.definition(parameter);
       stats(this.$('baseGeometryStats'), [['Filtered scalar rows', selection.rows.length, 'baseGeometryScalarRows'], ['Survey terms', terms.length, 'baseGeometryRankRows'], ['Plotted term rows', termRows.filter(row => parameterValue(row, parameter) !== null).length, 'baseGeometrySelectedRows']]);
       this.$('surveyCoverageBody').replaceChildren(...available.map(item => {

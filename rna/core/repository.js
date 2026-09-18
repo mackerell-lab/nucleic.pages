@@ -115,7 +115,8 @@ export class RnaDataRepository {
           ids.add(row.id);
         }
         if (descriptor.row_count != null && descriptor.row_count !== rows.length) throw new Error(`RNA row count mismatch: ${key}`);
-        return { ...(Array.isArray(data) ? {} : data), rows, family: key.slice(7), build_id: manifest.build_id };
+        const { columns, missing, ...metadata } = Array.isArray(data) ? {} : data;
+        return { ...metadata, rows, family: key.slice(7), build_id: manifest.build_id };
       }
       if (key === 'relations:interactions' && data?.encoding === INTERACTION_COLUMNAR_ENCODING) return decodeInteractionRows(data);
       return data;
@@ -146,7 +147,8 @@ export class RnaDataRepository {
       if (data.build_id && data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA survey: ${kind}`);
       if (kind === 'scalars') {
         const rows = data.encoding === SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(data, selectedFields) : decodeSurveyRows(data.rows ?? data, selectedFields);
-        return Array.isArray(data) ? rows : { ...data, rows };
+        const { columns, missing, ...metadata } = Array.isArray(data) ? {} : data;
+        return Array.isArray(data) ? rows : { ...metadata, rows };
       }
       return data;
     });

@@ -438,3 +438,30 @@ test('Pucker selection follows all recorded members of survey and pair observati
   assert.deepEqual(selectRows(rows, {}, { puckerStates: ["C3'-endo"] }).rows.map(row => row.id), ['local', 'survey', 'pair']);
   assert.equal(selectRows(rows).rows.length, 5);
 });
+
+test('Decoded caches release transport columns and projected-away Survey values', async () => {
+  const { encodeFamilyRows, encodeSurveyRows } = await import('../core/survey-codec.js');
+  const source = [{ id: 'r1', value: 12.5, status: 'ok', endpoint_entities: [{ entity_id: '1' }], unused: 'discard' }];
+  const assets = {
+    'manifest.json': { schema_version: 'rna-explorer-1', molecule_type: 'RNA', build_id: 'a',
+      families: [{ id: 'test', path: 'family.json', row_count: 1 }],
+      survey: { scalars: { terms: { angle: { path: 'scalar.json' } } } } },
+    'family.json': encodeFamilyRows(source, 'a'),
+    'scalar.json': encodeSurveyRows(source, 'a'),
+  };
+  const repository = new RnaDataRepository({ manifestUrl: 'https://example.org/manifest.json',
+    fetchImpl: async url => new Response(JSON.stringify(assets[url.split('/').at(-1)])) });
+  const family = await repository.loadFamily('test');
+  const scalar = await repository.loadSurveyScalars('angle');
+  const projected = await repository.loadSurveyScalars('angle', { fields: ['id', 'value'] });
+  assert.deepEqual(family.rows, source);
+  assert.deepEqual(scalar.rows, source);
+  assert.deepEqual(projected.rows, [{ id: 'r1', value: 12.5 }]);
+  for (const table of [family, scalar, projected]) {
+    assert.equal(table.build_id, 'a');
+    assert.equal(Object.hasOwn(table, 'columns'), false);
+    assert.equal(Object.hasOwn(table, 'missing'), false);
+    assert(Object.isFrozen(table.rows[0]));
+  }
+  assert.equal(JSON.stringify(projected).includes('discard'), false);
+});

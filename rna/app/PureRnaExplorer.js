@@ -535,7 +535,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         if (eligiblePairs && (!row.pair_id || !eligiblePairs.has(row.pair_id))) continue;
         const context = row.context ?? row.sequence_context ?? row.base ?? row.base_code;
         if (context) contextSet.add(context);
-        if (state.survey.coordinateContext !== 'all' && context !== state.survey.coordinateContext) continue;
+    if (state.survey.coordinateContext !== 'all' && context !== state.survey.coordinateContext) continue;
         if (state.survey.coordinateOpening !== 'all' && row.opening_bin !== state.survey.coordinateOpening) continue;
         accumulator.add(row);
       }
@@ -549,6 +549,10 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       this.state.survey.coordinateGroup = group;
       this.coordinateSummary = averages;
       this.$('coordinateFrameNote').textContent = `Frame: ${group?.includes('cytosine_standard_pair') ? 'Cytosine standard frame, aligned using the deposited C base and the pinned x3dna reference.' : 'RNA standard base frame, aligned to the pinned base-specific x3dna reference.'} Atom averages are computed separately for each recorded context and atom identity. Residues count distinct target residues; pairs count explicit pair identities. Pair counts are not applicable to single-base frames. Counts use the selected deposited model.`;
+      const bins = (this.manifest.survey.opening_bins ?? []).filter(bin => Number.isFinite(bin.min) && Number.isFinite(bin.max));
+      const openingOptions = [{ id: 'all', label: 'All openings' }, ...bins.map(bin => ({ id: bin.id, label: bin.label ?? bin.id }))];
+      options(this.$('coordinateOpeningSelect'), openingOptions, state.survey.coordinateOpening);
+      this.$('coordinateBinNote').textContent = bins.length ? `Opening bins: ${bins.map(bin => `${bin.label ?? bin.id} ${bin.include_min ? '[' : '('}${bin.min}, ${bin.max}${bin.include_max ? ']' : ')'}`).join(' · ')}. These are descriptive bins, not RNA conformation thresholds.` : 'This release does not declare opening-bin boundaries; coordinate conditioning is unavailable.';
       options(this.$('coordinateContextSelect'), [{ id: 'all', label: 'All recorded contexts' }, ...contexts.map(id => ({ id, label: id }))], state.survey.coordinateContext);
       const precise = value => Number.isFinite(value) ? value.toFixed(4) : '—';
       this.$('baseGeometryCoordBody').replaceChildren(...averages.map(item => { const row = element('tr'); row.append(...[item.atom, number(item.n), number(item.residues), item.pairs === null ? 'Not applicable' : number(item.pairs), number(item.entries), ...item.mean.map(precise), precise(item.rms)].map(value => element('td', {}, value))); return row; }));

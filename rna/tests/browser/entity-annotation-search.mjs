@@ -39,8 +39,21 @@ try {
   const rows = await page.locator('#universeTableBody tr').evaluateAll(items => items.map(row => ({ text: row.textContent, pdb: row.querySelector('a')?.textContent })));
   assert(rows.some(row => row.pdb === probe.pdbId), `Search missed ${probe.pdbId} for entity annotation ${probe.value}`);
   assert(rows.some(row => row.text.toLowerCase().includes(probe.value.toLowerCase())), 'Matching annotation was not rendered in the table');
+  const coverage = await page.evaluate(() => {
+    const app = window.rnaExplorer;
+    const keys = ['functions', 'function_tags', 'structures', 'structural_tags', 'subtypes', 'rna_types', 'annotation_tags'];
+    const has = row => keys.some(key => {
+      const value = row?.[key];
+      return (Array.isArray(value) ? value : value == null ? [] : [value]).length > 0;
+    });
+    const expected = app.entries.filter(entry => has(entry) || app.entryEntities(entry).some(has)).length;
+    const card = [...document.querySelectorAll('#overviewCards .card')].find(node => node.querySelector('h3')?.textContent === 'RNA Annotation Coverage');
+    const metric = [...(card?.querySelectorAll('.metric') ?? [])].find(node => node.querySelector('.metric-label')?.textContent === 'Annotated entries');
+    return { expected, actual: Number(metric?.querySelector('.metric-value')?.textContent.replaceAll(',', '')) };
+  });
+  assert.equal(coverage.actual, coverage.expected, 'Annotation coverage omitted non-function NAKB fields');
   assert.deepEqual(report.errors, []);
-  report.checks.push({ name: 'Entity annotation search and rendering', ...probe });
+  report.checks.push({ name: 'Entity annotation search and rendering', ...probe, coverage });
   report.passed = true;
 } catch (error) {
   report.passed = false;

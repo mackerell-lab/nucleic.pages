@@ -193,7 +193,9 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   renderUniverse() {
     const methods = Object.fromEntries(['xray', 'nmr', 'em', 'other'].map(method => [method, this.entries.filter(entry => [entry.method, ...(entry.methods ?? [])].some(value => methodKey(value) === method)).length]));
     const rows = this.families.reduce((total, family) => total + (family.row_count ?? 0), 0);
-    const annotated = this.entries.filter(entry => labels(entry.functions ?? entry.function_tags).length || (this.metadata.entities ?? []).some(entity => entryId(entity) === entryId(entry) && labels(entity.functions).length)).length;
+    const annotationKeys = ['functions', 'function_tags', 'structures', 'structural_tags', 'subtypes', 'rna_types', 'annotation_tags'];
+    const hasAnnotation = row => annotationKeys.some(key => labels(row?.[key]).length > 0);
+    const annotated = this.entries.filter(entry => hasAnnotation(entry) || this.entryEntities(entry).some(hasAnnotation)).length;
     const partial = this.manifest.partial ?? this.manifest.subset ?? this.manifest.release_status === 'partial';
     const description = `${number(this.entries.length)} canonical pure-RNA PDB entries in ${partial ? 'this explicitly bounded dataset' : 'this dataset'}. Full declared RNA sequences use A/C/G/U; protein, DNA, hybrid, and noncanonical polymers are excluded. ${this.manifest.generated_at ? `Generated ${this.manifest.generated_at.slice(0, 10)}.` : ''}`;
     this.$('universeDescription').textContent = description;

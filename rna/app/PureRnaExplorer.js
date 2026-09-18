@@ -389,6 +389,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
 
   async requestJointOnly() {
     const request = this.capture();
+    this.status('Updating RNA joint measurements…');
+    this.$('jointCsvDownload').disabled = true;
     try {
       const family = await this.repository.loadFamily(request.state.familyId);
       if (!this.current(request.revision)) return;

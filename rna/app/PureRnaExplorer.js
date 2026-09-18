@@ -387,7 +387,17 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     });
   }
 
+  async requestRender() {
+    const owner = {};
+    this.fullRenderOwner = owner;
+    try { return await super.requestRender(); }
+    finally { if (this.fullRenderOwner === owner) this.fullRenderOwner = null; }
+  }
+
   async requestJointOnly() {
+    // A new revision cancels the previous render. Preserve its unfinished
+    // panels by refreshing the whole view with the latest joint settings.
+    if (this.fullRenderOwner) return this.requestRender();
     const request = this.capture();
     this.status('Updating RNA joint measurements…');
     this.$('jointCsvDownload').disabled = true;

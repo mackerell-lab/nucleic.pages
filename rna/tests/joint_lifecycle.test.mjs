@@ -31,3 +31,30 @@ test('Joint refresh disables stale CSV until the current request completes', asy
   assert.equal(app.snapshots.joint.revision, 2);
   assert.equal(app.snapshots.distribution.snapshot_id, 'keep-1d');
 });
+
+test('Joint controls during a full refresh preserve all pending panels', async () => {
+  const { app } = setup();
+  const full = [];
+  app.render = async request => {
+    const gate = deferred(); full.push({ gate, request });
+    await gate.promise;
+    if (!app.current(request.revision)) return;
+    for (const panel of ['distribution', 'survey', 'coordinates', 'joint']) {
+      app.snapshots[panel] = { contexts: request.state.selection.contexts, palette: request.state.joint.palette };
+    }
+  };
+  const first = app.setSelection({ contexts: ['U'] });
+  app.state.joint.palette = 'viridis';
+  const second = app.requestJointOnly();
+  assert.equal(full.length, 2, 'Joint-only refresh abandoned unfinished full panels');
+  full[0].gate.resolve(); await first;
+  app.state.joint.palette = 'ocean';
+  const third = app.requestJointOnly();
+  assert.equal(full.length, 3, 'Old completion cleared the newer full-render owner');
+  full[1].gate.resolve(); await second;
+  full[2].gate.resolve(); await third;
+  for (const panel of ['distribution', 'survey', 'coordinates', 'joint']) {
+    assert.deepEqual(app.snapshots[panel], { contexts: ['U'], palette: 'ocean' });
+  }
+  assert.equal(app.fullRenderOwner, null);
+});

@@ -124,8 +124,10 @@ export class RnaDataRepository {
   loadMetadata() { return this.loadAsset('metadata', manifest => manifest.metadata || manifest.files?.metadata || manifest.files?.entries); }
   loadFamily(id) { return this.loadAsset(`family:${id}`, manifest => Array.isArray(manifest.families) ? manifest.families.find(family => family.id === id) : manifest.families?.[id]); }
   loadRelations(type) { return this.loadAsset(`relations:${type}`, manifest => manifest.relations?.[type]); }
-  loadSurvey(kind = 'scalars', partition = null) {
-    const key = `survey:${kind}${partition === null ? '' : `:${partition}`}`;
+  loadSurvey(kind = 'scalars', partition = null, { fields = null } = {}) {
+    const selectedFields = fields ? [...new Set(fields)].sort() : null;
+    const fieldKey = selectedFields ? `:fields=${encodeURIComponent(JSON.stringify(selectedFields))}` : '';
+    const key = `survey:${kind}${partition === null ? '' : `:${partition}`}${fieldKey}`;
     return this.cached(key, async () => {
       const manifest = await this.loadManifest();
       const survey = manifest.survey?.[kind];
@@ -141,11 +143,14 @@ export class RnaDataRepository {
       if (!descriptor?.path) throw new Error(`RNA survey partition is unavailable: ${kind}/${partition}`);
       const data = await this.readJson(new URL(descriptor.path, this.releaseUrl).href);
       if (data.build_id && data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA survey: ${kind}`);
-      if (kind === 'scalars' && data.encoding === SURVEY_COLUMNAR_ENCODING) return { ...data, rows: decodeSurveyRows(data) };
+      if (kind === 'scalars') {
+        const rows = data.encoding === SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(data, selectedFields) : decodeSurveyRows(data.rows ?? data, selectedFields);
+        return Array.isArray(data) ? rows : { ...data, rows };
+      }
       return data;
     });
   }
-  loadSurveyScalars(termId = null) { return this.loadSurvey('scalars', termId); }
+  loadSurveyScalars(termId = null, options = {}) { return this.loadSurvey('scalars', termId, options); }
   async *iterateSurveyCoordinates(groupKey, { entryIds = null, signal } = {}) {
     const manifest = await this.loadManifest();
     const survey = manifest.survey?.coordinates;
@@ -208,7 +213,8 @@ export class RnaDataRepository {
     return this.cached(key, load);
   }
   releaseSurvey(kind, partition = null) {
-    this.promises.delete(`survey:${kind}${partition === null ? '' : `:${partition}`}`);
+    const prefix = `survey:${kind}${partition === null ? '' : `:${partition}`}`;
+    for (const key of this.promises.keys()) if (key === prefix || key.startsWith(`${prefix}:fields=`)) this.promises.delete(key);
     if (kind === 'coordinates') for (const key of this.promises.keys()) if (key.startsWith('survey:coordinates:collected:')) this.promises.delete(key);
   }
 }

@@ -10,6 +10,7 @@ test('Columnar Survey encoding round-trips raw identities, nulls and nested valu
   const encoded = encodeSurveyRows(rows, 'full_test');
   assert.equal(encoded.encoding, SURVEY_COLUMNAR_ENCODING); assert.equal(encoded.row_count, rows.length);
   assert.deepEqual(decodeSurveyRows(encoded), rows);
+  assert.deepEqual(decodeSurveyRows(encoded, ['id', 'value']), [{ id: 'r1', value: 12.3456789012345 }, { id: 'r2', value: null }]);
   assert.deepEqual(decodeSurveyRows(rows), rows);
 });
 

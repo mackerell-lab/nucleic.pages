@@ -228,12 +228,14 @@ test('Survey term loads stay separate from coordinates and can release cached pa
   await repository.loadSurveyScalars('U.angle');
   await repository.loadSurveyScalars('U.angle');
   assert.equal(calls.length, 2);
+  await repository.loadSurveyScalars('U.angle', { fields: ['id', 'value'] });
+  assert.equal(calls.length, 3);
   assert.ok(!calls.some(url => url.includes('coords')));
   repository.releaseSurvey('scalars', 'U.angle');
   await repository.loadSurveyScalars('U.angle');
-  assert.equal(calls.length, 3);
-  await repository.loadSurveyCoordinates('U');
   assert.equal(calls.length, 4);
+  await repository.loadSurveyCoordinates('U');
+  assert.equal(calls.length, 5);
 });
 
 test('Repository fetch preserves the browser global receiver', async () => {

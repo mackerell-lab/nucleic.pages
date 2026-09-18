@@ -18,6 +18,13 @@ const dataValue = row => typeof row.value === 'number' && Number.isFinite(row.va
 const DEFAULT_SELECTION = Object.freeze({ components: 'relaxed', methods: ['xray'], resolutionMax: 3, contexts: [], functions: [], subtypes: [], structures: [], puckerStates: [], includeEnds: true, pairPolicy: 'exact', interactionFamilies: [], stemOnly: false });
 const DEFAULT_DISPLAY = Object.freeze({ groupBy: 'base', circularMode: 'wrap_360', sigma: 1.6, normalization: 'probability', fine: true, traceStyle: 'filled' });
 const DEFAULT_JOINT = Object.freeze({ mode: 'identity', endpoint: 'both', residueContexts: [], residuePuckers: [], type: 'heatmap', colorScale: 'linear', palette: 'hotspots', labels: false, contourCount: 12 });
+const SURVEY_RANKING_FIELDS = Object.freeze([
+  'id', 'pdb_id', 'entry_id', 'entity_id', 'observation_level', 'residue1_id', 'residue2_id',
+  'pair_id', 'residue_id', 'observation_id', 'endpoint_entities', 'endpoint_entity_ids',
+  'family', 'interaction_family', 'near', 'alternative', 'stem_eligible', 'sequence_context',
+  'base', 'comp_id', 'pucker_class', 'pucker_classes', 'pucker_state', 'is_terminal',
+  'is_terminal_any', 'is_terminal_5p', 'is_terminal_3p', 'term_id', 'status', 'value',
+]);
 
 export class PureRnaExplorer extends NucleicAcidExplorer {
   constructor(config) {
@@ -478,7 +485,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         if (!this.current(revision)) return;
         const term = terms[index];
         if (cached.has(term.id)) { ranks.push(...cached.get(term.id)); continue; }
-        const table = await this.repository.loadSurveyScalars(term.id);
+        const table = await this.repository.loadSurveyScalars(term.id, { fields: SURVEY_RANKING_FIELDS });
         const selected = selectRows(this.surveyRows(table, term), this.metadata, { ...state.selection, contexts: state.survey.contexts ?? [] });
         const incidences = this.openingIncidences(selected.rows, openingIndex);
         const termRanks = rankSurveyContexts(incidences, term);

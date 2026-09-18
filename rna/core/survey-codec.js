@@ -54,10 +54,17 @@ export function encodeSurveyRows(rows, buildId = null) {
   return { encoding: SURVEY_COLUMNAR_ENCODING, ...(buildId ? { build_id: buildId } : {}), row_count: rows.length, columns };
 }
 
-export function decodeSurveyRows(data) {
-  if (Array.isArray(data)) return data;
+export function decodeSurveyRows(data, fields = null) {
+  if (Array.isArray(data)) {
+    if (!fields) return data;
+    const wanted = new Set(fields);
+    return data.map(row => Object.fromEntries(Object.entries(row).filter(([key]) => wanted.has(key))));
+  }
   if (!data || data.encoding !== SURVEY_COLUMNAR_ENCODING || !data.columns) throw new Error('Unsupported RNA Survey encoding');
-  const keys = Object.keys(data.columns), count = data.row_count ?? data.columns[keys[0]]?.length ?? 0;
+  const available = Object.keys(data.columns);
+  const wanted = fields ? new Set(fields) : null;
+  const keys = wanted ? available.filter(key => wanted.has(key)) : available;
+  const count = data.row_count ?? data.columns[available[0]]?.length ?? 0;
   if (!keys.every(key => Array.isArray(data.columns[key]) && data.columns[key].length === count)) throw new Error('Survey column length mismatch');
   return Array.from({ length: count }, (_, index) => Object.fromEntries(keys.map(key => [key, data.columns[key][index]])));
 }

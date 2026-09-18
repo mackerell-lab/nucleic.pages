@@ -1,4 +1,4 @@
-import { decodeCoordinateRows, decodeFamilyRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from './survey-codec.js';
+import { decodeCoordinateRows, decodeFamilyRows, decodeInteractionRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from './survey-codec.js';
 
 /** A session pins one immutable RNA release; rejected requests can be retried. */
 const immutableData = new WeakSet();
@@ -117,6 +117,7 @@ export class RnaDataRepository {
         if (descriptor.row_count != null && descriptor.row_count !== rows.length) throw new Error(`RNA row count mismatch: ${key}`);
         return { ...(Array.isArray(data) ? {} : data), rows, family: key.slice(7), build_id: manifest.build_id };
       }
+      if (key === 'relations:interactions' && data?.encoding === INTERACTION_COLUMNAR_ENCODING) return decodeInteractionRows(data);
       return data;
     });
   }

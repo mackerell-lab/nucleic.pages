@@ -2,6 +2,7 @@
 export const SURVEY_COLUMNAR_ENCODING = 'rna-survey-columnar-1';
 export const COORDINATE_COLUMNAR_ENCODING = 'rna-coordinate-columnar-1';
 export const FAMILY_COLUMNAR_ENCODING = 'rna-family-columnar-1';
+export const INTERACTION_COLUMNAR_ENCODING = 'rna-interaction-columnar-1';
 
 function encodeDictionaryColumns(rows, encoding, buildId = null) {
   if (!Array.isArray(rows)) throw new TypeError('RNA rows must be an array');
@@ -95,3 +96,5 @@ export function decodeCoordinateRows(data) {
 
 export function encodeFamilyRows(rows, buildId = null) { return encodeDictionaryColumns(rows, FAMILY_COLUMNAR_ENCODING, buildId); }
 export function decodeFamilyRows(data) { return decodeDictionaryColumns(data, FAMILY_COLUMNAR_ENCODING, 'family'); }
+export function encodeInteractionRows(rows, buildId = null) { return encodeDictionaryColumns(rows, INTERACTION_COLUMNAR_ENCODING, buildId); }
+export function decodeInteractionRows(data) { return decodeDictionaryColumns(data, INTERACTION_COLUMNAR_ENCODING, 'interaction'); }

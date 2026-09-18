@@ -5,7 +5,7 @@ import {gzipSync, gunzipSync} from 'node:zlib';
 import {RESIDUE_PARAMETERS} from './parameter_registry.mjs';
 import {TERM_REGISTRY,publicBaseGeometryConfig} from './survey_terms.mjs';
 import {readJson, sha256} from './output_scope.mjs';
-import {encodeCoordinateRows, encodeFamilyRows, encodeSurveyRows, decodeCoordinateRows, decodeFamilyRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
+import {encodeCoordinateRows, encodeFamilyRows, encodeInteractionRows, encodeSurveyRows, decodeCoordinateRows, decodeFamilyRows, decodeInteractionRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',sugar_torsion:'Sugar Torsions',
@@ -90,6 +90,9 @@ class Partitions {
       } else if (this.columnar && key.startsWith('families/')) {
         payload = Buffer.from(JSON.stringify(encodeFamilyRows(JSON.parse(raw), this.buildId)));
         encoding = FAMILY_COLUMNAR_ENCODING;
+      } else if (this.columnar && key === 'relations/interactions') {
+        payload = Buffer.from(JSON.stringify(encodeInteractionRows(JSON.parse(raw), this.buildId)));
+        encoding = INTERACTION_COLUMNAR_ENCODING;
       }
       const compressed = gzipSync(payload, {level:9});
       const relative = `${key}.json.gz`, output = await this.scope.write(path.join(releaseRoot, relative), compressed);
@@ -240,6 +243,7 @@ export async function validateRelease(manifestPath) {
     if (descriptor.encoding === SURVEY_COLUMNAR_ENCODING) return decodeSurveyRows(data);
     if (descriptor.encoding === COORDINATE_COLUMNAR_ENCODING) return decodeCoordinateRows(data);
     if (descriptor.encoding === FAMILY_COLUMNAR_ENCODING) return decodeFamilyRows(data);
+    if (descriptor.encoding === INTERACTION_COLUMNAR_ENCODING) return decodeInteractionRows(data);
     return data;
   };
   const metadata = await load(manifest.metadata), entryIds = new Set(metadata.entries.map(row => row.pdb_id));

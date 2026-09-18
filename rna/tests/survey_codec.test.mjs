@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeCoordinateRows, decodeFamilyRows, decodeSurveyRows, encodeCoordinateRows, encodeFamilyRows, encodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from '../core/survey-codec.js';
+import { decodeCoordinateRows, decodeFamilyRows, decodeInteractionRows, decodeSurveyRows, encodeCoordinateRows, encodeFamilyRows, encodeInteractionRows, encodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from '../core/survey-codec.js';
 
 test('Columnar Survey encoding round-trips raw identities, nulls and nested values', () => {
   const rows = [
@@ -36,4 +36,12 @@ test('Dictionary family encoding preserves nulls, absent fields and numeric valu
   assert.equal(encoded.encoding, FAMILY_COLUMNAR_ENCODING);
   assert.deepEqual(decodeFamilyRows(JSON.parse(JSON.stringify(encoded))), rows);
   assert.throws(() => decodeFamilyRows({ ...encoded, columns: { id: { dictionary: ['r1'], indices: [1, 0] } } }), /dictionary/);
+});
+
+test('Dictionary interaction encoding preserves directed graph identities and categories', () => {
+  const rows = [{ id: 'e1', family: 'cWW', categories: ['basepair', 'basepair_detail'], near: false, residue1_id: 'r1', residue2_id: 'r2' },
+    { id: 'e2', family: 'cWW', categories: ['basepair', 'basepair_detail'], near: true, residue1_id: 'r2', residue2_id: 'r1' }];
+  const encoded = encodeInteractionRows(rows, 'full_test');
+  assert.equal(encoded.encoding, INTERACTION_COLUMNAR_ENCODING);
+  assert.deepEqual(decodeInteractionRows(JSON.parse(JSON.stringify(encoded))), rows);
 });

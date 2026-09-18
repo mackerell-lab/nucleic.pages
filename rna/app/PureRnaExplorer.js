@@ -21,9 +21,11 @@ const DEFAULT_JOINT = Object.freeze({ mode: 'identity', endpoint: 'both', residu
 const SURVEY_RANKING_FIELDS = Object.freeze([
   'id', 'pdb_id', 'entry_id', 'entity_id', 'observation_level', 'residue1_id', 'residue2_id',
   'pair_id', 'residue_id', 'observation_id', 'endpoint_entities', 'endpoint_entity_ids',
-  'family', 'interaction_family', 'near', 'alternative', 'stem_eligible', 'sequence_context',
-  'base', 'comp_id', 'pucker_class', 'pucker_classes', 'pucker_state', 'is_terminal',
-  'is_terminal_any', 'is_terminal_5p', 'is_terminal_3p', 'term_id', 'status', 'value',
+  'family', 'interaction_family', 'near', 'alternative', 'stem_eligible', 'level',
+  'sequence_context', 'context', 'context_id', 'pair_label', 'step_label', 'base', 'comp_id',
+  'pucker', 'pucker_class', 'pucker_classes', 'pucker_state', 'is_terminal', 'is_terminal_any',
+  'is_terminal_5p', 'is_terminal_3p', 'terminal', 'end_context', 'quality_flags', 'term_id',
+  'status', 'value',
 ]);
 
 export class PureRnaExplorer extends NucleicAcidExplorer {

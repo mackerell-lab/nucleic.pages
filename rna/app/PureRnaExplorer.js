@@ -497,7 +497,9 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         if (!this.current(revision)) return;
         const term = terms[index];
         if (cached.has(term.id)) { ranks.push(...cached.get(term.id)); continue; }
-        const table = await this.repository.loadSurveyScalars(term.id, { fields: SURVEY_RANKING_FIELDS });
+        const table = term.id === this.lastSurveyTerm
+          ? await this.repository.loadSurveyScalars(term.id)
+          : await this.repository.loadSurveyScalars(term.id, { fields: SURVEY_RANKING_FIELDS });
         const selected = selectRows(this.surveyRows(table, term), this.metadata, { ...state.selection, contexts: state.survey.contexts ?? [] });
         const incidences = this.openingIncidences(selected.rows, openingIndex);
         const termRanks = rankSurveyContexts(incidences, term);

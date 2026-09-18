@@ -66,7 +66,8 @@ export function decodeSurveyRows(data, fields = null) {
   const wanted = fields ? new Set(fields) : null;
   const keys = wanted ? available.filter(key => wanted.has(key)) : available;
   const count = data.row_count ?? data.columns[available[0]]?.length ?? 0;
-  if (!keys.every(key => Array.isArray(data.columns[key]) && data.columns[key].length === count)) throw new Error('Survey column length mismatch');
+  if (!Number.isSafeInteger(count) || count < 0) throw new Error('Invalid Survey row count');
+  if (!available.every(key => Array.isArray(data.columns[key]) && data.columns[key].length === count)) throw new Error('Survey column length mismatch');
   return Array.from({ length: count }, (_, index) => Object.fromEntries(keys.map(key => [key, data.columns[key][index]])));
 }
 

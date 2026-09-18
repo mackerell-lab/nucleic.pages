@@ -19,6 +19,19 @@ test('Columnar Survey decoding rejects inconsistent columns and unknown encoding
   assert.throws(() => decodeSurveyRows({ encoding: 'other', columns: {} }), /Unsupported/);
 });
 
+test('Survey projection validates unselected columns and row counts before decoding', () => {
+  const data = { encoding: SURVEY_COLUMNAR_ENCODING, row_count: 2, columns: { id: ['r1', 'r2'], value: [1, 2] } };
+  for (const value of [[1], null, { length: 2 }]) {
+    assert.throws(() => decodeSurveyRows({ ...data, columns: { ...data.columns, value } }, ['id']), /column length/);
+  }
+  for (const row_count of [-1, 1.5, '2', Infinity]) {
+    assert.throws(() => decodeSurveyRows({ ...data, row_count }, []), /row count/);
+  }
+  assert.deepEqual(decodeSurveyRows(data, []), [{}, {}]);
+  const { row_count, ...legacy } = data;
+  assert.deepEqual(decodeSurveyRows(legacy, ['value']), [{ value: 1 }, { value: 2 }]);
+});
+
 test('Columnar coordinate encoding round-trips geometry rows and rejects bad columns', () => {
   const rows = [{ id: 'a', atom_label: 'A.N1', x: 1.25, y: null, residue_ids: ['a'] }, { id: 'b', atom_label: 'A.C2', x: 2.5, y: 3 }];
   const encoded = encodeCoordinateRows(rows, 'full_test');

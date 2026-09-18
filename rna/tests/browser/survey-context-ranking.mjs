@@ -78,6 +78,13 @@ try {
   await page.click(`#baseGeometryContextGroup button[data-value="${selected.context}"]`); await waitReady(page);
   const allContexts = await page.evaluate(() => window.rnaExplorer.snapshots.survey.selection_spec.contexts);
   assert.deepEqual(allContexts, []);
+  await page.click('#resetFilters'); await waitReady(page);
+  const reset = await page.evaluate(() => ({ ranking: window.rnaExplorer.state.survey.ranking,
+    rows: [...document.querySelectorAll('#baseGeometryRankingBody tr[data-term]')].length,
+    notice: document.querySelector('#baseGeometryRankingBody')?.textContent.trim() }));
+  assert.equal(reset.ranking, false);
+  assert.equal(reset.rows, 0, 'Reset retained stale term-ranking rows');
+  assert.match(reset.notice, /Compute term ranking/);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: path.join(output, 'mobile-survey.png'), fullPage: true });
   assert.deepEqual(report.errors, []); report.passed = true;

@@ -178,6 +178,14 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const surveyLoaded = this.state.survey.loaded, coordinatesLoaded = this.state.survey.coordinatesLoaded;
     this.state.survey = { loaded: surveyLoaded, group: 'all', contexts: [], termId: '', opening: 'all', ranking: false, minimum: 20,
       coordinatesLoaded, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all' };
+    this.surveyRanks = [];
+    const rankingBody = this.$('baseGeometryRankingBody');
+    if (rankingBody) {
+      rankingBody.replaceChildren();
+      const row = element('tr');
+      row.append(element('td', { colspan: '9' }, 'Compute term ranking to compare opening-conditioned terms.'));
+      rankingBody.append(row);
+    }
     this.updateSelectors(); this.renderControls();
     return this.requestRender();
   }

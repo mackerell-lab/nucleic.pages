@@ -204,7 +204,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   renderSurveyRankingControls() {
     this.$('surveyOpeningSelect').value = this.state.survey.opening;
     this.$('surveyRankingControls').replaceChildren();
-    control(this.$('surveyRankingControls'), { id: 'baseGeometryMinObsGroup', title: 'Minimum per opening bin', choices: choices([['5', '5'], ['20', '20'], ['50', '50'], ['100', '100']]), selected: String(this.state.survey.minimum), onChange: value => { this.state.survey.minimum = Number(value); this.requestRender(); } });
+    control(this.$('surveyRankingControls'), { id: 'baseGeometryMinObsGroup', title: 'Minimum per opening bin', choices: choices([['1', '1'], ['5', '5'], ['20', '20'], ['50', '50'], ['100', '100']]), selected: String(this.state.survey.minimum), onChange: value => { this.state.survey.minimum = Number(value); this.requestRender(); } });
   }
 
   resetFilters() {
@@ -816,17 +816,20 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const chunks = repository.iterateSurveyCoordinates ? repository.iterateSurveyCoordinates(group, { entryIds: eligible }) : (async function* () { yield await repository.loadSurveyCoordinates(group); })();
     const accumulator = new CoordinateSummary(); const contextSet = new Set();
     for await (const chunk of chunks) {
-      if (!this.current(revision)) return;
+      // Async iteration alone can keep resolved chunks in one microtask chain.
+      // Stop at a task boundary before selecting/accumulating the next chunk.
+      if (!await this.checkpoint(revision)) return;
       const selection = selectRows(chunk, this.metadata, { ...state.selection, contexts: [] });
       for (const row of selection.rows) {
         if (eligiblePairs && (!row.pair_id || !eligiblePairs.has(row.pair_id))) continue;
         const context = row.context ?? row.sequence_context ?? row.base ?? row.base_code;
         if (context) contextSet.add(context);
-    if (state.survey.coordinateContext !== 'all' && context !== state.survey.coordinateContext) continue;
+        if (state.survey.coordinateContext !== 'all' && context !== state.survey.coordinateContext) continue;
         if (state.survey.coordinateOpening !== 'all' && row.opening_bin !== state.survey.coordinateOpening) continue;
         accumulator.add(row);
       }
     }
+    if (!await this.checkpoint(revision)) return;
     const contexts = [...contextSet].sort();
     const averages = accumulator.results();
     await this.commit(revision, async () => {

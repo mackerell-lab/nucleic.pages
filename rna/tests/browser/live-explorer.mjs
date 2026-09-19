@@ -266,6 +266,50 @@ try {
   await page.click('#surveyRankingLoad');
   await waitReady(page);
   record('Opening-conditioned survey and term ranking', { incidences: conditioned.result.coverage.plottedRows, rankedTerms: await page.locator('#baseGeometryRankingBody tr').count() });
+  const rankingBefore = await page.evaluate(() => {
+    const app = window.rnaExplorer;
+    window.rnaMinimumRankCache = [...app.rankingCache].map(([key, cache]) => [key, cache, [...cache].map(([term, ranks]) => [term, ranks, JSON.stringify(ranks)])]);
+    return { minimum: app.state.survey.minimum, ranks: app.surveyRanks.map(({ sufficient, ...rank }) => rank) };
+  });
+  assert.equal(rankingBefore.minimum, 20, 'Ranking default changed before option1 test');
+  assert(rankingBefore.ranks.length > 0, 'Minimum test requires real ranked observations');
+  const rankKey = rank => JSON.stringify([rank.term.id, rank.context]);
+  const rawRanking = ranks => [...ranks].sort((a, b) => rankKey(a).localeCompare(rankKey(b)));
+  for (const minimum of [1, 20]) {
+    await page.click(`#baseGeometryMinObsGroup button[data-value="${minimum}"]`);
+    await waitReady(page);
+    const current = await page.evaluate(() => {
+      const app = window.rnaExplorer;
+      return { minimum: app.state.survey.minimum, ranks: app.surveyRanks,
+        cacheUnchanged: window.rnaMinimumRankCache.every(([key, cache, entries]) => app.rankingCache.get(key) === cache
+          && entries.every(([term, ranks, contents]) => cache.get(term) === ranks && JSON.stringify(ranks) === contents)),
+        rows: [...document.querySelectorAll('#baseGeometryRankingBody tr[data-term]')].map(row => ({ term: row.dataset.term, context: row.dataset.context, sufficient: row.dataset.sufficient, coverage: row.cells[8].textContent })),
+        selected: document.querySelector('#baseGeometryMinObsGroup button[aria-pressed="true"]')?.dataset.value };
+    });
+    assert.equal(current.minimum, minimum); assert.equal(current.selected, String(minimum)); assert(current.cacheUnchanged, 'Threshold invalidated cached scientific ranks');
+    assert.deepEqual(rawRanking(current.ranks.map(({ sufficient, ...rank }) => rank)), rawRanking(rankingBefore.ranks));
+    // Independent declared UI policy: all three populated bins meet the count
+    // threshold, then descending absolute signed separation, label and context.
+    // Undefined mean direction is not itself a coverage failure or significance.
+    const expected = rankingBefore.ranks.map(rank => ({ ...rank, sufficient: rank.counts.length === 3 && rank.counts.every(count => count >= minimum) }));
+    expected.sort((a, b) => {
+      if (a.sufficient !== b.sufficient) return a.sufficient ? -1 : 1;
+      const aMagnitude = Number.isFinite(a.difference) ? Math.abs(a.difference) : -Infinity;
+      const bMagnitude = Number.isFinite(b.difference) ? Math.abs(b.difference) : -Infinity;
+      if (aMagnitude !== bMagnitude) return aMagnitude > bMagnitude ? -1 : 1;
+      return a.term.label.localeCompare(b.term.label) || a.context.localeCompare(b.context);
+    });
+    assert.deepEqual(current.ranks, expected, 'Threshold coverage/ordering disagrees with declared rules');
+    assert.deepEqual(current.rows.map(row => JSON.stringify([row.term, row.context])), expected.map(rankKey));
+    for (let index = 0; index < expected.length; index++) {
+      const rank = expected[index];
+      assert.equal(current.rows[index].sufficient, String(rank.sufficient));
+      assert.equal(current.rows[index].coverage, rank.sufficient ? 'All bins meet minimum' : 'Insufficient per-bin coverage');
+      if (rank.counts.some(count => count === 0)) assert.equal(rank.sufficient, false, 'Missing bin promoted as covered');
+    }
+    record(`Ranking minimum ${minimum} preserves scientific cache and coverage rules`, { ranks: expected.length, sufficient: expected.filter(rank => rank.sufficient).length, missingBins: expected.filter(rank => rank.counts.some(count => count === 0)).length, rawValuesUnchanged: true, cacheUnchanged: current.cacheUnchanged });
+  }
+  await page.evaluate(() => { delete window.rnaMinimumRankCache; });
   assert(!fetched(report.responses, coordinatesPaths), 'Term ranking eagerly loaded coordinate assets');
   await page.click('#coordinatesLoad');
   await page.waitForFunction(() => document.querySelector('#baseGeometryCoordBody')?.rows.length > 0, null, { timeout: 120000 });

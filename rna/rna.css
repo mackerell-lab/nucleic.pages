@@ -12,6 +12,10 @@
 [data-explorer="rna"] .rna-details pre { overflow:auto; max-height:420px; font:12px/1.5 monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
 [data-explorer="rna"] input[type="search"] { border:1px solid var(--line); border-radius:10px; padding:8px 10px; background:#fffdf7; color:var(--ink); font:inherit; }
 [data-explorer="rna"] .rna-control-select { max-width:100%; }
+[data-explorer="rna"] .rna-control-help { min-width:0; font-size:13px; line-height:1.5; color:var(--muted); overflow-wrap:anywhere; }
+[data-explorer="rna"] .rna-control-help summary { width:fit-content; min-height:32px; padding:5px 8px; border-radius:6px; color:var(--accent); cursor:pointer; }
+[data-explorer="rna"] .rna-control-help summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+[data-explorer="rna"] .rna-control-help p { margin:4px 0 0; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fffdf7; }
 [data-explorer="rna"] .rna-tag { display:inline-block; margin:2px 4px 2px 0; padding:2px 6px; border:1px solid var(--line); border-radius:6px; font-size:12px; }
 [data-explorer="rna"] .rna-overview-button { color:inherit; font:inherit; text-align:left; cursor:pointer; width:100%; }
 [data-explorer="rna"] .rna-overview-button:hover { border-color:var(--accent); }

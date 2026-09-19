@@ -50,6 +50,11 @@ export function control(parent, { id, title, choices, selected, multi = false, h
     }
     cluster.append(group);
   }
+  if (help) {
+    const details = element('details', { className: 'rna-control-help' });
+    details.append(element('summary', { 'aria-label': `${title} help` }, 'Help'), element('p', {}, help));
+    cluster.append(details);
+  }
   parent.append(cluster);
   return cluster;
 }

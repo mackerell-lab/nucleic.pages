@@ -1,0 +1,8 @@
+# Retain historical RNA releases in Git without publishing unused payloads.
+# assets/pure_rna/manifest.json selects the complete release kept below.
+exclude:
+  - assets/pure_rna/releases/full_bundled_family_20260919
+  - assets/pure_rna/releases/full_bundled_survey_20260919
+  - assets/pure_rna/releases/full_columnar_interaction_20260918
+  - assets/pure_rna/releases/full_packed_coordinate_20260919
+  - assets/pure_rna/releases/full_packed_family_20260919

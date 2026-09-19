@@ -1,4 +1,5 @@
 import { wrapCircular } from '../math/numeric.js';
+import { RNA_CONTROL_HELP } from '../config/control-help.js';
 
 const COLORS = ['#174a7e', '#8c3b2a', '#146c43', '#8659a1', '#be882e', '#32898c', '#ae567e', '#6a6256'];
 export const entryId = row => String(row.accession ?? row.pdb_id ?? row.pdb ?? row.entry_id ?? row.id ?? '').toUpperCase();
@@ -18,6 +19,7 @@ export function options(select, items, selected) {
   if (items.some(item => item.id === selected)) select.value = selected;
 }
 export function control(parent, { id, title, choices, selected, multi = false, help, onChange, select = false, allLabel = null }) {
+  help = RNA_CONTROL_HELP[id] ?? help;
   const cluster = element('div', { className: 'filter-cluster' });
   const label = element('span', { className: 'cluster-title' }, title);
   if (help) label.title = help;

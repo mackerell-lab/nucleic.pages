@@ -12,11 +12,13 @@ export function isImmutableData(value, seen = new WeakSet()) {
   if (!value || typeof value !== 'object' || !Object.isFrozen(value)) return false;
   if (immutableData.has(value)) return true;
   const prototype = Object.getPrototypeOf(value);
-  if ((!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) || seen.has(value)) return false;
+  if ((prototype !== null && prototype !== (Array.isArray(value) ? Array.prototype : Object.prototype)) || seen.has(value)) return false;
   seen.add(value);
-  // Certify only when a snapshot wants to share this object. Walking descriptors
-  // for every unloaded survey row would make opening rankings unnecessarily slow.
-  for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+  // Certify only when sharing a frozen plain graph. Every own descriptor,
+  // including hidden and symbol keys, must satisfy the immutable-data contract.
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  for (const key of Reflect.ownKeys(descriptors)) {
+    const descriptor = descriptors[key];
     if (!Object.hasOwn(descriptor, 'value')) return false;
     const item = descriptor.value;
     if (typeof item === 'function' || (item && typeof item === 'object' && !isImmutableData(item, seen))) return false;

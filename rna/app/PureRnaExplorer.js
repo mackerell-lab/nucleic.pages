@@ -5,9 +5,10 @@ import { distribution, histogram2D } from '../core/analysis.js';
 import { join } from '../core/joints.js';
 import { jointSelectionSpecs } from '../core/joint-selection.js';
 import { jointOptions } from '../core/joint-options.js';
+import { jointAnalysisKey } from '../core/joint-analysis-key.js';
 import { rankSurveyContexts, orderSurveyRanks, surveyContext } from '../core/survey-ranking.js';
 import { CoordinateSummary } from '../core/coordinates.js';
-import { csv, createPlotSnapshot, provenance } from '../core/export.js';
+import { csv, createPlotSnapshot, provenance, restyleJointSnapshot } from '../core/export.js';
 import { cards, control, distributionTraces, download, element, entryId, labels, number, options, plotLayout, stats, summaryCards, tableRows } from '../views/panels.js';
 import { annotationLabel } from '../views/labels.js';
 import { JOINT_PALETTE_OPTIONS, jointColorscale } from '../views/palettes.js';
@@ -45,6 +46,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.pages = { universe: 0, filtered: 0 }; this.filteredEntries = []; this.contributing = new Set();
     this.rankingCache = new Map();
     this.fullRenderComplete = false;
+    this.completedJointKey = null;
     this.entitiesByEntry = new Map(); this.entrySearchText = new Map();
   }
 
@@ -404,7 +406,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   async renderJoint(state, revision, leftSelection) {
     this.updateJointResidueControls(null, state);
     if (!state.family2Id || !state.parameter2Id) {
-      await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, 'Select a second parameter above to generate a joint distribution.')); this.$('jointStats').replaceChildren(); this.$('jointCsvDownload').disabled = true; this.snapshots.joint = null; });
+      await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, 'Select a second parameter above to generate a joint distribution.')); this.$('jointStats').replaceChildren(); this.$('jointCsvDownload').disabled = true; this.snapshots.joint = null; this.completedJointKey = null; });
       return;
     }
     const rightTable = await this.repository.loadFamily(state.family2Id);
@@ -412,7 +414,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const xParameter = this.parameter(state.familyId, state.parameterId); const yParameter = this.parameter(state.family2Id, state.parameter2Id);
     const specs = jointSelectionSpecs(state.selection, state.joint, xParameter.level, yParameter.level);
     if (!specs.valid) {
-      await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, specs.message)); this.$('jointStats').replaceChildren(); this.$('jointNote').textContent = specs.message; this.snapshots.joint = null; this.$('jointCsvDownload').disabled = true; });
+      await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, specs.message)); this.$('jointStats').replaceChildren(); this.$('jointNote').textContent = specs.message; this.snapshots.joint = null; this.completedJointKey = null; this.$('jointCsvDownload').disabled = true; });
       return;
     }
     if (specs.left !== state.selection) leftSelection = selectRows(await this.repository.loadFamily(state.familyId), this.metadata, specs.left);
@@ -425,13 +427,24 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     let relations = [];
     if (state.joint.mode === 'relation') {
       const relationKey = Object.keys(this.manifest.relations ?? {}).find(key => /pair.*residue|endpoint/.test(key)) ?? (this.manifest.relations?.observations ? 'observations' : null);
-      if (!relationKey) { await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, 'This release has no validated pair-to-residue relation table.')); this.$('jointStats').replaceChildren(); this.snapshots.joint = null; this.$('jointCsvDownload').disabled = true; }); return; }
+      if (!relationKey) { await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, 'This release has no validated pair-to-residue relation table.')); this.$('jointStats').replaceChildren(); this.snapshots.joint = null; this.completedJointKey = null; this.$('jointCsvDownload').disabled = true; }); return; }
       relations = rowsOf(await this.repository.loadRelations(relationKey));
     }
     const endpoint = { nt1: 'first', nt2: 'second' }[state.joint.endpoint] ?? state.joint.endpoint;
     const joined = join(leftSelection.rows, rightSelection.rows, { type: state.joint.mode, relations, endpoint, xParameter, yParameter, x: xParameter.id, y: yParameter.id });
     const result = histogram2D(joined.points, xParameter, yParameter, { ...state.display, bins: state.display.fine ? 72 : 36 });
-    const snapshot = this.snapshot({ result: { ...result, points: result.points ?? joined.points }, selectionSpec: state.selection, displaySpec: state.display, buildId: this.manifest.build_id, joinSpec: state.joint, provenance: { join_diagnostics: joined.diagnostics, axis_selections: { x: specs.left, y: specs.right } }, revision });
+    await this.renderJointResult(result, state, revision, { join_diagnostics: joined.diagnostics, axis_selections: { x: specs.left, y: specs.right } });
+  }
+
+  jointAnalysisKey(state) {
+    return jointAnalysisKey(state, { buildId: this.manifest?.build_id, releaseUrl: this.repository.releaseUrl });
+  }
+
+  async renderJointResult(result, state, revision, analysisProvenance, previousSnapshot = null) {
+    const { xParameter, yParameter } = result;
+    const analysisKey = this.jointAnalysisKey(state);
+    const snapshot = previousSnapshot ? restyleJointSnapshot(previousSnapshot, state.joint)
+      : this.snapshot({ result, selectionSpec: state.selection, displaySpec: state.display, buildId: this.manifest.build_id, joinSpec: state.joint, provenance: analysisProvenance, revision });
     await this.commit(revision, async () => {
       // Match DNA's display floor; histogram intensities and hover remain raw.
       const logFloor = 1e-8, logarithmic = state.joint.colorScale === 'log';
@@ -461,7 +474,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       await this.plot(this.$('jointPlot'), traces, plotLayout(xParameter, state.display.normalization, { yaxis: { title: `${yParameter.label ?? yParameter.id}${yParameter.unit ? ` (${yParameter.unit})` : ''}` }, height: 530 }));
       if (!this.current(revision)) return;
       this.snapshots.joint = snapshot;
-      const points = result.points ?? joined.points; const summary = result.statistics ?? {};
+      this.completedJointKey = analysisKey;
+      const points = result.points; const summary = result.statistics ?? {};
       stats(this.$('jointStats'), [['Matched observations', points.length, 'jointMatchedN'], ['Matched PDBs', new Set(points.map(point => entryId(point.left ?? point))).size, 'jointMatchedPdbs'], ['Pearson r', xParameter.period || yParameter.period ? 'Not applicable' : number(summary.r), 'jointPearsonR'], ['Circular corr.', xParameter.period && yParameter.period ? number(summary.r) : 'Not applicable', 'jointCircularR'], ['R²', xParameter.period || yParameter.period ? 'Not applicable' : number(summary.r2), 'jointRSquared']]);
       this.$('jointNote').textContent = state.joint.mode === 'relation' ? 'Endpoint observations retain pair, residue, and side identities. Residue context and pucker are independent joint filters; both endpoints are statistically related.' : 'Only identical observation IDs are matched; display labels and sequence text do not establish identity.';
       if (logarithmic) this.$('jointNote').textContent += ' Log color uses a display floor of 10⁻⁸; hover retains the actual probability or density, including zero.';
@@ -490,10 +504,16 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.status('Updating RNA joint measurements…');
     this.$('jointCsvDownload').disabled = true;
     try {
-      const family = await this.repository.loadFamily(request.state.familyId);
-      if (!this.current(request.revision)) return;
-      const selection = selectRows(family, this.metadata, request.state.selection);
-      await this.renderJoint(request.state, request.revision, selection);
+      const previous = this.snapshots.joint;
+      if (previous && this.completedJointKey === this.jointAnalysisKey(request.state)) {
+        // Retain only the active snapshot, never a second cache of scientific rows.
+        await this.renderJointResult(previous.result, request.state, request.revision, previous.provenance, previous);
+      } else {
+        const family = await this.repository.loadFamily(request.state.familyId);
+        if (!this.current(request.revision)) return;
+        const selection = selectRows(family, this.metadata, request.state.selection);
+        await this.renderJoint(request.state, request.revision, selection);
+      }
       if (this.current(request.revision) && this.completedCoordinateKey
           && this.completedCoordinateLabels !== this.state.survey.coordinateLabels) {
         await this.commit(request.revision, () => this.renderCoordinatePlot(this.coordinateSummary, request.revision, this.completedCoordinateKey));

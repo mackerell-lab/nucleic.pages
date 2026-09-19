@@ -1,4 +1,9 @@
 import { deepFreeze, isImmutableData } from './repository.js';
+import { JOINT_STYLE_KEYS } from './joint-analysis-key.js';
+
+const createdSnapshots = new WeakSet();
+let snapshotSerial = 0;
+const snapshotId = () => globalThis.crypto?.randomUUID?.() || `rna-${Date.now()}-${++snapshotSerial}`;
 
 function ownedPlainCopy(value, copies = new WeakMap()) {
   if (!value || typeof value !== 'object') return value;
@@ -17,7 +22,7 @@ function ownedPlainCopy(value, copies = new WeakMap()) {
 export function createPlotSnapshot(options) {
   if (!options?.result) throw new Error('A plot snapshot requires a completed result');
   const snapshot = ownedPlainCopy({
-    snapshot_id: options.snapshot_id || globalThis.crypto?.randomUUID?.() || `rna-${Date.now()}`,
+    snapshot_id: options.snapshot_id || snapshotId(),
     build_id: options.buildId || options.build_id || null,
     created_at: options.created_at || new Date().toISOString(),
     selection_spec: options.selectionSpec || options.selection_spec || {},
@@ -30,7 +35,27 @@ export function createPlotSnapshot(options) {
     result: options.transferResult ? null : options.result,
   });
   if (options.transferResult) snapshot.result = options.result;
-  return deepFreeze(snapshot);
+  deepFreeze(snapshot);
+  createdSnapshots.add(snapshot);
+  return snapshot;
+}
+
+/** Restyle only a snapshot whose entire graph this module already froze. */
+export function restyleJointSnapshot(previous, joint) {
+  if (!createdSnapshots.has(previous) || previous.result?.kind !== 'joint') {
+    throw new TypeError('Joint display reuse requires an owned frozen joint snapshot');
+  }
+  const joinSpec = ownedPlainCopy(previous.join_spec ?? {});
+  // ownedPlainCopy can return the original immutable spec. Spread before edits.
+  const updated = { ...joinSpec };
+  for (const key of JOINT_STYLE_KEYS) {
+    if (Object.hasOwn(joint, key)) updated[key] = ownedPlainCopy(joint[key]);
+    else delete updated[key];
+  }
+  const snapshot = Object.freeze({ ...previous, snapshot_id: snapshotId(),
+    created_at: new Date().toISOString(), join_spec: deepFreeze(updated) });
+  createdSnapshots.add(snapshot);
+  return snapshot;
 }
 
 function escapeCsv(value) {

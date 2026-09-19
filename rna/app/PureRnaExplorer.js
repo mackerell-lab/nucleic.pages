@@ -111,7 +111,12 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
 
   renderJointControls() {
     const joint = this.state.joint; this.$('jointControls').replaceChildren(); this.$('jointDisplayControls').replaceChildren();
-    const add = (parent, id, title, values, selected, key) => control(this.$(parent), { id, title, choices: choices(values), selected, onChange: value => { this.state.joint[key] = key === 'labels' ? value === 'on' : key === 'contourCount' ? Number(value) : value; this.requestJointOnly(); } });
+    const add = (parent, id, title, values, selected, key) => control(this.$(parent), { id, title, choices: choices(values), selected, onChange: value => {
+      if (['labels', 'contourCount'].includes(key) && this.state.joint.type === 'heatmap') return;
+      this.state.joint[key] = key === 'labels' ? value === 'on' : key === 'contourCount' ? Number(value) : value;
+      if (key === 'type') this.updateJointContourControls();
+      this.requestJointOnly();
+    } });
     add('jointControls', 'jointJoinModeGroup', 'Join Mode', [['identity', 'Same observation'], ['relation', 'Pair → Residue']], joint.mode, 'mode');
     add('jointControls', 'jointResidueSideGroup', 'Residue Side', [['both', 'Both'], ['nt1', 'nt1'], ['nt2', 'nt2']], joint.endpoint, 'endpoint');
     control(this.$('jointControls'), { id: 'jointResidueContextGroup', title: 'Residue Context', choices: choices(['A', 'C', 'G', 'U'].map(base => [base, base])), selected: joint.residueContexts ?? [], multi: true, allLabel: 'All contexts',
@@ -121,6 +126,16 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     add('jointDisplayControls', 'jointContourWidthGroup', 'Contour Spacing', [['6', 'Wide'], ['12', 'Standard'], ['24', 'Tight']], String(joint.contourCount), 'contourCount');
     add('jointDisplayControls', 'jointColorScaleGroup', 'Color Scale', [['linear', 'Linear'], ['log', 'Log']], joint.colorScale, 'colorScale');
     add('jointDisplayControls', 'jointPaletteGroup', 'Color Palette', JOINT_PALETTE_OPTIONS.map(option => [option.id, option.label]), joint.palette, 'palette');
+    this.updateJointContourControls();
+  }
+
+  updateJointContourControls() {
+    const applicable = this.state.joint.type !== 'heatmap';
+    for (const id of ['jointContourLabelsGroup', 'jointContourWidthGroup']) {
+      const group = this.$(id);
+      group.parentElement.hidden = !applicable;
+      for (const button of group.querySelectorAll('button')) button.disabled = !applicable;
+    }
   }
 
   updateJointResidueControls(table, state) {

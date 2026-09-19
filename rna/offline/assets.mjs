@@ -7,6 +7,7 @@ import {TERM_REGISTRY,publicBaseGeometryConfig} from './survey_terms.mjs';
 import {readJson, sha256} from './output_scope.mjs';
 import {encodeCoordinateRows, encodeFamilyRows, encodeInteractionRows, encodeSurveyRows, decodeCoordinateRows, decodeFamilyRows, decodeInteractionRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
 import {SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn} from '../core/shared-survey-codec.js';
+import {BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle} from '../core/bundled-survey-codec.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',sugar_torsion:'Sugar Torsions',
@@ -241,6 +242,16 @@ export async function validateRelease(manifestPath) {
     const bytes = await fs.readFile(path.join(root,descriptor.path));
     if (sha256(bytes) !== descriptor.sha256) throw new Error(`Asset hash mismatch: ${descriptor.path}`);
     const data = JSON.parse((descriptor.path.endsWith('.gz') ? gunzipSync(bytes) : bytes).toString());
+    if (descriptor.encoding === BUNDLED_SURVEY_ENCODING) {
+      const expanded = await expandBundledSurveyColumns(data, async reference => {
+        if (!/^[a-f0-9]{64}$/.test(reference)) throw new Error('Invalid Survey bundle content hash');
+        const bundleBytes = await fs.readFile(path.join(root, 'survey/bundles', `${reference}.json.gz`));
+        const payload = JSON.parse(gunzipSync(bundleBytes).toString());
+        const {bundle} = await verifySurveyBundle(reference, payload);
+        return bundle;
+      });
+      return decodeSurveyRows(expanded);
+    }
     if (descriptor.encoding === SHARED_SURVEY_ENCODING) {
       const expanded = await expandSharedSurveyColumns(data, async reference => {
         if (!/^[a-f0-9]{64}$/.test(reference)) throw new Error('Invalid shared Survey content hash');

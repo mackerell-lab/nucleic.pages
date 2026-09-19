@@ -16,6 +16,7 @@ import { wrapCircular } from '../math/numeric.js';
 import { coordinateLayout } from '../views/coordinate-layout.js';
 import { coordinateTraces } from '../views/coordinate-traces.js';
 import { jointContourConfig } from '../core/contours.js';
+import { surveyRankingDisplay } from '../views/survey-ranking.js';
 
 const choices = pairs => pairs.map(([id, label]) => ({ id, label }));
 const rowsOf = table => Array.isArray(table) ? table : table?.rows ?? [];
@@ -734,9 +735,21 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         const ordered = orderSurveyRanks(ranks, state.survey.minimum);
         this.surveyRanks = ordered;
         this.$('baseGeometryRankingBody').replaceChildren(...ordered.map(rank => {
-          const row = element('tr', { 'data-term': rank.term.id, 'data-context': rank.context, 'data-sufficient': String(rank.sufficient) }); const label = element('td'); const button = element('button', { type: 'button', className: 'toggle-btn' }, rank.term.label);
-          button.addEventListener('click', () => { this.state.survey.termId = rank.term.id; this.state.survey.contexts = [rank.context]; this.state.survey.opening = 'bins'; this.$('surveyOpeningSelect').value = 'bins'; this.requestRender(); }); label.append(button);
-          row.append(label, ...[rank.context, rank.counts.join(' / '), ...rank.means.map(number), number(rank.difference), rank.trend, rank.sufficient ? 'All bins meet minimum' : 'Insufficient per-bin coverage'].map(value => element('td', {}, value))); return row;
+          const display = surveyRankingDisplay(rank, { circularMode: state.display.circularMode, termId: this.state.survey.termId, contexts: state.survey.contexts ?? [] });
+          const row = element('tr', { 'data-term': rank.term.id, 'data-context': rank.context, 'data-sufficient': String(rank.sufficient), className: display.active ? 'active-row' : '', 'aria-current': display.active ? 'true' : 'false' }); const label = element('td'); const button = element('button', { type: 'button', className: `toggle-btn${display.active ? ' active' : ''}`, 'aria-pressed': String(display.active) }, rank.term.label);
+          button.addEventListener('click', () => {
+            if (!row.isConnected) return;
+            const term = this.surveyTerms().find(term => term.id === rank.term.id);
+            if (!term) return;
+            // A previous ranking remains visible after a failed group load.
+            // Honor its explicit term choice in that term's valid group.
+            if (this.state.survey.group !== 'all' && this.state.survey.group !== term.group) {
+              this.state.survey.group = term.group; this.$('surveyGroupSelect').value = term.group;
+            }
+            this.state.survey.termId = term.id; this.state.survey.contexts = [rank.context]; this.state.survey.opening = 'bins'; this.$('surveyOpeningSelect').value = 'bins'; this.requestRender();
+          }); label.append(button);
+          if (display.unit) label.append(element('span', { className: 'meta' }, ` ${display.unit}`));
+          row.append(label, ...[rank.context, rank.counts.join(' / '), ...display.means, display.difference, rank.trend, rank.sufficient ? 'All bins meet minimum' : 'Insufficient per-bin coverage'].map(value => element('td', {}, value))); return row;
         }));
         if (!ordered.length) { const row = element('tr'); row.append(element('td', { colspan: '9' }, 'No finite term/context observations in the selected opening bins.')); this.$('baseGeometryRankingBody').append(row); }
       });

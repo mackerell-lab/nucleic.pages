@@ -387,7 +387,12 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       const finite = rows.filter(row => parameterValue(row, parameter) !== null).length;
       card.append(element('p', { className: 'meta' }, `${number(finite)} / ${number(rows.length)} finite`));
       const plot = element('div', { className: 'rna-mini-plot', 'aria-hidden': 'true' }); card.append(plot); container.append(card);
-      card.addEventListener('click', () => { this.state.parameterId = parameter.id; this.updateSelectors(); this.requestRender(); });
+      card.addEventListener('click', () => {
+        // Previous-family cards can remain visible while loading or after failure.
+        // Same-family cards remain usable across completed overview reuse.
+        if (this.state.familyId !== state.familyId || !this.parameter(state.familyId, parameter.id)) return;
+        this.state.parameterId = parameter.id; this.updateSelectors(); this.requestRender();
+      });
       await this.plot(plot, distributionTraces(result, { traceStyle: 'line' }), plotLayout(parameter, state.display.normalization, { height: 150, margin: { l: 30, r: 8, t: 4, b: 30 }, showlegend: false, xaxis: { title: '', tickfont: { size: 10 } }, yaxis: { title: '', tickfont: { size: 10 } } }));
     }
     if (this.current(revision)) this.overviewKey = key;

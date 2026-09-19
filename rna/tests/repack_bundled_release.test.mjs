@@ -10,9 +10,10 @@ import {gzipSync, gunzipSync} from 'node:zlib';
 import {sha256} from '../offline/output_scope.mjs';
 import {validateRelease} from '../offline/assets.mjs';
 import {verifyReleaseInventory} from '../offline/verify_release_inventory.mjs';
-import {encodeFamilyRows, encodeSurveyRows, decodeFamilyRows, decodeSurveyRows} from '../core/survey-codec.js';
+import {encodeFamilyRows, encodeSurveyRows, encodeCoordinateRows, decodeFamilyRows, decodeSurveyRows, decodeCoordinateRows} from '../core/survey-codec.js';
 import {BUNDLED_FAMILY_ENCODING, FAMILY_BUNDLE_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle} from '../core/bundled-family-codec.js';
 import {BUNDLED_SURVEY_ENCODING, SURVEY_BUNDLE_ENCODING, expandBundledSurveyColumns, verifySurveyBundle} from '../core/bundled-survey-codec.js';
+import {PACKED_COORDINATE_ENCODING, encodePackedCoordinates, expandPackedCoordinates} from '../core/packed-coordinate-codec.js';
 
 const execute = promisify(execFile);
 const script = fileURLToPath(new URL('../offline/repack_bundled_release.mjs', import.meta.url));
@@ -60,6 +61,21 @@ async function fixture(t, {familyBundled = true} = {}) {
   const familyPlain = encodeFamilyRows(rows, 'source-build');
   const family = familyBundled ? await bundleTransport(sourceRoot, familyPlain, 'family', ['id', 'pdb_id']) : {packed: familyPlain};
   const survey = await bundleTransport(sourceRoot, encodeSurveyRows(scalars, 'source-build'), 'scalar', ['id']);
+  const coordinateRows = rows.map((row, index) => ({id: `c${index}`, pdb_id: row.pdb_id, entity_id: row.entity_id,
+    model_id: '1', residue_id: row.id, residue_ids: [row.id], anchor_residue_id: row.id, target_residue_id: row.id,
+    endpoint_entities: [{pdb_id: 'TEST', entity_id: '1'}], is_terminal_any: false, status: 'available', atom: 'N1',
+    x: index ? 1.2345678901234567 : Number.MIN_VALUE, y: index ? -1.2345678901234567 : 0.10000000000000002,
+    z: index ? 9999.999999999998 : -1e-20, ...(index ? {} : {auth_seq_id: 'A-42'})}));
+  const coordinateGroups = {};
+  for (const group of ['standard', 'alternate']) {
+    const partitions = [];
+    for (let index = 0; index < coordinateRows.length; index++) {
+      const packed = encodeCoordinateRows([coordinateRows[index]], 'source-build');
+      partitions.push({...await writePacked(sourceRoot, `survey/coordinates/${group}/${index}.json.gz`, packed),
+        row_count: 1, entry_ids: ['TEST'], encoding: packed.encoding});
+    }
+    coordinateGroups[group] = {label: group, row_count: coordinateRows.length, partitions};
+  }
   const manifest = {schema_version: 'rna-explorer-1', molecule_type: 'RNA', build_id: 'source-build', partial: false,
     counts: {entries: 1, entities: 1, residues: 2}, source: {candidate_count: 1},
     metadata: await writePacked(sourceRoot, 'metadata.json.gz', {entries: [{pdb_id: 'TEST', selected_model_id: '1'}], entities: [{pdb_id: 'TEST', entity_id: '1'}]}),
@@ -68,19 +84,35 @@ async function fixture(t, {familyBundled = true} = {}) {
     ...(familyBundled ? {family_bundles: family.registry} : {}), relations: {},
     survey: {terms: [{id: 'angle', label: 'Angle'}], opening_bins: [], bundles: survey.registry,
       scalars: {terms: {angle: {...await writePacked(sourceRoot, 'survey/scalars/angle.json.gz', survey.packed), row_count: 2, encoding: BUNDLED_SURVEY_ENCODING}}},
-      coordinates: {groups: {}}},
+      coordinates: {unit: 'angstrom', groups: coordinateGroups}},
     provenance: {decisions: await writePacked(sourceRoot, 'decisions.json.gz', [{pdb_id: 'TEST', accepted: true}]),
       build_stages: {geometry: {status: 'complete', signature: 'trusted-source'}},
       repack: {operation: 'previous-storage-transform', evidence: {path: 'historical-report.json'}},
       source_release: {build_id: 'original-science', repack: {operation: 'earlier-transform'}}},
   };
   const sourceFile = path.join(sourceRoot, 'manifest.json'); await fs.writeFile(sourceFile, JSON.stringify(manifest));
-  return {directory, sourceRoot, sourceFile, manifest, rows, scalars};
+  return {directory, sourceRoot, sourceFile, manifest, rows, scalars, coordinateRows};
 }
 
 async function candidateFor(sourceFile, directory, kind) {
   await fs.mkdir(directory);
   const sourceRoot = path.dirname(sourceFile), sourceBytes = await fs.readFile(sourceFile), source = JSON.parse(sourceBytes);
+  if (kind === 'coordinate') {
+    const coordinates = structuredClone(source.survey.coordinates);
+    let firstPacked, firstDescriptor;
+    for (const group of Object.values(coordinates.groups)) for (const descriptor of group.partitions) {
+      let original = await readPacked(sourceRoot, descriptor);
+      if (original.encoding === PACKED_COORDINATE_ENCODING) original = expandPackedCoordinates(original);
+      const packed = structuredClone(encodePackedCoordinates(original));
+      Object.assign(descriptor, await writePacked(directory, descriptor.path, packed), {encoding: PACKED_COORDINATE_ENCODING});
+      firstPacked ??= packed; firstDescriptor ??= descriptor;
+    }
+    const candidate = {schema_version: 'rna-coordinate-packed-candidate-1', coordinate_only: true,
+      build_id: source.build_id, source_manifest: {path: sourceFile, sha256: sha256(sourceBytes)},
+      survey: {coordinates, opening_bins: source.survey.opening_bins}};
+    const file = path.join(directory, 'candidate.json'); await fs.writeFile(file, JSON.stringify(candidate));
+    return {file, candidate, descriptor: firstDescriptor, packed: firstPacked};
+  }
   const family = kind === 'family';
   const sourceDescriptor = family ? source.families[0] : source.survey.scalars.terms.angle;
   const original = await expand(sourceRoot, await readPacked(sourceRoot, sourceDescriptor), source, kind);
@@ -192,4 +224,78 @@ test('repack rejects rehashed numerical corruption and changed scientific descri
   c.descriptor.parameters = [{id: 'chi', unit: 'radians'}];
   await fs.writeFile(c.file, JSON.stringify(c.candidate));
   await assert.rejects(run(f.sourceFile, c.file, path.join(f.directory, 'changed-descriptor'), 'new-build'), /Unchanged candidate scientific descriptor/);
+});
+
+test('coordinate repack preserves both bundle types and every binary64 value across repeated repacks', async t => {
+  const f = await fixture(t);
+  let sourceFile = f.sourceFile, previousManifest = f.manifest;
+  for (let round = 0; round < 2; round++) {
+    const c = await candidateFor(sourceFile, path.join(f.directory, `coordinate-candidate-${round}`), 'coordinate');
+    const output = path.join(f.directory, `coordinate-release-${round}`);
+    const report = await run(sourceFile, c.file, output, `coordinate-build-${round}`);
+    const manifestFile = path.join(output, 'manifest.json'), manifest = await readJson(manifestFile);
+    assert.equal(report.candidate_kind, 'coordinate'); assert.ok(report.coordinate_candidate);
+    assert.equal(report.scalar_candidate, undefined); assert.equal(report.family_candidate, undefined);
+    assert.equal(manifest.provenance.repack.operation, 'lossless_packed_coordinate_transport');
+    assert.equal(manifest.provenance.repack.coordinate_encoding, PACKED_COORDINATE_ENCODING);
+    assert.ok(manifest.provenance.repack.code_sha256['../core/packed-coordinate-codec.js']);
+    assert.deepEqual(manifest.provenance.source_release.repack, previousManifest.provenance.repack);
+    assert.deepEqual(manifest.family_bundles, previousManifest.family_bundles);
+    assert.deepEqual(manifest.survey.bundles, previousManifest.survey.bundles);
+    for (const descriptor of [...Object.values(manifest.family_bundles), ...Object.values(manifest.survey.bundles)]) {
+      assert.deepEqual(await fs.readFile(path.join(output, descriptor.path)), await fs.readFile(path.join(path.dirname(sourceFile), descriptor.path)));
+    }
+    for (const group of Object.values(manifest.survey.coordinates.groups)) {
+      const actual = [];
+      for (const descriptor of group.partitions) {
+        assert.equal(descriptor.encoding, PACKED_COORDINATE_ENCODING);
+        const packed = await readPacked(output, descriptor); assert.equal(packed.build_id, manifest.build_id);
+        actual.push(...decodeCoordinateRows(expandPackedCoordinates(packed)));
+      }
+      assert.deepEqual(actual, f.coordinateRows);
+      for (let index = 0; index < actual.length; index++) for (const axis of ['x', 'y', 'z']) {
+        assert(Object.is(actual[index][axis], f.coordinateRows[index][axis]), `Exact ${axis} row ${index}`);
+      }
+    }
+    assert.deepEqual(decodeFamilyRows(await expand(output, await readPacked(output, manifest.families[0]), manifest, 'family')), f.rows);
+    assert.deepEqual(decodeSurveyRows(await expand(output, await readPacked(output, manifest.survey.scalars.terms.angle), manifest, 'scalar')), f.scalars);
+    assert.equal((await validateRelease(manifestFile)).ok, true);
+    assert.equal((await verifyReleaseInventory(manifestFile)).ok, true);
+    sourceFile = manifestFile; previousManifest = manifest;
+  }
+});
+
+test('coordinate candidate rejects scope metadata group and partition-order changes before staging', async t => {
+  const f = await fixture(t), c = await candidateFor(f.sourceFile, path.join(f.directory, 'coordinate-candidate'), 'coordinate');
+  const cases = [
+    [candidate => {candidate.family_only = true;}, /Exactly one/],
+    [candidate => {candidate.survey.opening_bins = [{min: 1}];}, /Unchanged opening bins/],
+    [candidate => {candidate.survey.coordinates.unit = 'nanometer';}, /coordinate root metadata/],
+    [candidate => {delete candidate.survey.coordinates.groups.alternate;}, /Complete ordered coordinate groups/],
+    [candidate => {candidate.survey.coordinates.groups = Object.fromEntries(Object.entries(candidate.survey.coordinates.groups).reverse());}, /Complete ordered coordinate groups/],
+    [candidate => {candidate.survey.coordinates.groups.standard.label = 'changed';}, /coordinate group metadata/],
+    [candidate => {candidate.survey.coordinates.groups.standard.partitions.reverse();}, /ordered coordinate partition paths/],
+    [candidate => {candidate.survey.coordinates.groups.standard.partitions.pop();}, /ordered coordinate partition paths/],
+    [candidate => {candidate.survey.coordinates.groups.standard.partitions[0].entry_ids = ['OTHER'];}, /coordinate scientific descriptor/],
+  ];
+  for (let index = 0; index < cases.length; index++) {
+    const [mutate, error] = cases[index], candidate = structuredClone(c.candidate);
+    mutate(candidate); await fs.writeFile(c.file, JSON.stringify(candidate));
+    const output = path.join(f.directory, `rejected-coordinate-${index}`);
+    await assert.rejects(run(f.sourceFile, c.file, output, 'new-coordinate-build'), error);
+    await assert.rejects(fs.access(output), {code: 'ENOENT'});
+  }
+});
+
+test('coordinate repack rejects rehashed numeric and identity changes despite valid binary64 transport', async t => {
+  for (const field of ['x', 'id']) {
+    const f = await fixture(t), directory = path.join(f.directory, 'coordinate-candidate');
+    const c = await candidateFor(f.sourceFile, directory, 'coordinate');
+    const expanded = expandPackedCoordinates(c.packed);
+    expanded.columns[field][0] = field === 'x' ? 99.125 : 'different-identity';
+    const changed = encodePackedCoordinates(expanded);
+    Object.assign(c.descriptor, await writePacked(directory, c.descriptor.path, changed));
+    await fs.writeFile(c.file, JSON.stringify(c.candidate));
+    await assert.rejects(run(f.sourceFile, c.file, path.join(f.directory, 'corrupted-coordinate'), 'new-coordinate-build'), /All original coordinate transport metadata and columns/);
+  }
 });

@@ -1,4 +1,4 @@
-/** Stage a complete lossless bundled release without changing published assets. */
+/** Stage a complete lossless transport release without changing published assets. */
 import assert from 'node:assert/strict';
 import { mkdir, readFile, readdir, realpath, writeFile, access } from 'node:fs/promises';
 import { gzipSync, gunzipSync } from 'node:zlib';
@@ -12,11 +12,12 @@ import {
 import { BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle } from '../core/bundled-survey-codec.js';
 import { BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle } from '../core/bundled-family-codec.js';
 import { SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn } from '../core/shared-survey-codec.js';
+import { PACKED_COORDINATE_ENCODING, expandPackedCoordinates } from '../core/packed-coordinate-codec.js';
 import { releaseDescriptors } from './verify_release_inventory.mjs';
 
 const [sourceArgument, candidateArgument, outputArgument, buildId, ...extra] = process.argv.slice(2);
 if (!sourceArgument || !candidateArgument || !outputArgument || !buildId || extra.length) {
-  throw new Error('Usage: node repack_bundled_release.mjs SOURCE_MANIFEST BUNDLED_CANDIDATE NEW_OUTPUT_DIRECTORY NEW_BUILD_ID');
+  throw new Error('Usage: node repack_bundled_release.mjs SOURCE_MANIFEST TRANSPORT_CANDIDATE NEW_OUTPUT_DIRECTORY NEW_BUILD_ID');
 }
 if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(buildId)) throw new Error('Unsafe new build ID');
 const inside = (root, file) => file === root || file.startsWith(`${root}${path.sep}`);
@@ -28,19 +29,22 @@ assert.equal(source.schema_version, 'rna-explorer-1');
 assert.equal(source.molecule_type, 'RNA');
 assert.equal(source.partial, false, 'Repack requires a complete source release');
 assert.ok(source.build_id && source.build_id !== buildId, 'New immutable build identity');
-assert.ok((candidate.scalar_only === true) !== (candidate.family_only === true), 'Exactly one scalar_only or family_only candidate kind');
-const candidateKind = candidate.family_only === true ? 'family' : 'scalar';
-const candidateEncoding = candidateKind === 'family' ? BUNDLED_FAMILY_ENCODING : BUNDLED_SURVEY_ENCODING;
-assert.equal(candidate.schema_version, candidateKind === 'family' ? 'rna-family-bundled-candidate-1' : 'rna-survey-bundled-candidate-1', 'Candidate schema');
+const candidateKinds = ['scalar', 'family', 'coordinate'].filter(kind => candidate[`${kind}_only`] === true);
+assert.equal(candidateKinds.length, 1, 'Exactly one scalar_only, family_only, or coordinate_only candidate kind');
+const candidateKind = candidateKinds[0];
+const candidateEncoding = {family: BUNDLED_FAMILY_ENCODING, scalar: BUNDLED_SURVEY_ENCODING, coordinate: PACKED_COORDINATE_ENCODING}[candidateKind];
+assert.equal(candidate.schema_version, {family: 'rna-family-bundled-candidate-1', scalar: 'rna-survey-bundled-candidate-1', coordinate: 'rna-coordinate-packed-candidate-1'}[candidateKind], 'Candidate schema');
 assert.equal(candidate.build_id, source.build_id, 'Candidate source identity');
 assert.equal(candidate.source_manifest.sha256, sha256(sourceBytes), 'Candidate source manifest identity');
-const candidateFamilies = new Map();
+const without = (item, keys) => Object.fromEntries(Object.entries(item).filter(([key]) => !keys.includes(key)));
+const scientificDescriptor = item => without(item, ['path', 'encoding', 'bytes', 'uncompressed_bytes', 'sha256']);
+const candidateFamilies = new Map(), candidateCoordinates = new Map();
 if (candidateKind === 'scalar') {
   assert.deepEqual(candidate.survey.terms, source.survey.terms, 'Unchanged term definitions');
   assert.deepEqual(candidate.survey.opening_bins, source.survey.opening_bins, 'Unchanged opening bins');
   assert.deepEqual(Object.keys(candidate.survey.scalars.terms).sort(), Object.keys(source.survey.scalars.terms).sort(), 'Complete scalar registry');
   assert.ok(candidate.survey.bundles && typeof candidate.survey.bundles === 'object' && !Array.isArray(candidate.survey.bundles), 'Scalar bundle registry');
-} else {
+} else if (candidateKind === 'family') {
   assert.ok(Array.isArray(candidate.families), 'Candidate families');
   assert.equal(new Set(source.families.map(family => family.id)).size, source.families.length, 'Unique source family IDs');
   for (const family of candidate.families) {
@@ -49,6 +53,26 @@ if (candidateKind === 'scalar') {
   }
   assert.deepEqual([...candidateFamilies.keys()].sort(), source.families.map(family => family.id).sort(), 'Complete family registry');
   assert.ok(candidate.family_bundles && typeof candidate.family_bundles === 'object' && !Array.isArray(candidate.family_bundles), 'Family bundle registry');
+} else {
+  assert.deepEqual(candidate.survey.opening_bins, source.survey.opening_bins, 'Unchanged opening bins');
+  const originalCoordinates = source.survey.coordinates, replacementCoordinates = candidate.survey.coordinates;
+  assert.deepEqual(without(replacementCoordinates, ['groups']), without(originalCoordinates, ['groups']), 'Unchanged coordinate root metadata');
+  assert.deepEqual(Object.keys(replacementCoordinates.groups), Object.keys(originalCoordinates.groups), 'Complete ordered coordinate groups');
+  for (const [group, original] of Object.entries(originalCoordinates.groups)) {
+    const replacement = replacementCoordinates.groups[group];
+    let originals, replacements;
+    if (original.partitions !== undefined || replacement.partitions !== undefined) {
+      assert.ok(Array.isArray(original.partitions) && Array.isArray(replacement.partitions), 'Unchanged coordinate partition structure');
+      assert.deepEqual(without(replacement, ['partitions']), without(original, ['partitions']), 'Unchanged coordinate group metadata');
+      originals = original.partitions; replacements = replacement.partitions;
+    } else { originals = [original]; replacements = [replacement]; }
+    assert.deepEqual(replacements.map(item => item.path), originals.map(item => item.path), 'Complete ordered coordinate partition paths');
+    for (let index = 0; index < originals.length; index++) {
+      assert.deepEqual(scientificDescriptor(replacements[index]), scientificDescriptor(originals[index]), 'Unchanged coordinate scientific descriptor');
+      assert.ok(!candidateCoordinates.has(originals[index].path), 'Unique coordinate partition paths');
+      candidateCoordinates.set(originals[index].path, replacements[index]);
+    }
+  }
 }
 
 const output = path.resolve(outputArgument), parent = path.dirname(output);
@@ -101,6 +125,7 @@ async function writeResource(descriptor, compressed, rawLength) {
 }
 
 async function expandedTransport(data, root, release) {
+  if (data?.encoding === PACKED_COORDINATE_ENCODING) return expandPackedCoordinates(data);
   if (data?.encoding === BUNDLED_SURVEY_ENCODING) {
     return expandBundledSurveyColumns(data, async reference => {
       const bundles = release.survey?.bundles ?? {};
@@ -187,7 +212,6 @@ async function repack(descriptor, replacement = null) {
   if (replacement) {
     assert.equal(input.data.encoding, candidateEncoding);
     assert.equal(input.data.build_id, source.build_id, 'Candidate build identity');
-    const scientificDescriptor = item => Object.fromEntries(Object.entries(item).filter(([key]) => !['path', 'encoding', 'bytes', 'uncompressed_bytes', 'sha256'].includes(key)));
     assert.deepEqual(scientificDescriptor(replacement), scientificDescriptor(descriptor), 'Unchanged candidate scientific descriptor');
     const expanded = await expandedTransport(input.data, output, manifest);
     const originalExpanded = await expandedTransport(original.data, sourceRoot, source);
@@ -237,8 +261,9 @@ for (const [term, descriptor] of Object.entries(source.survey.scalars.terms)) {
 for (const [group, value] of Object.entries(source.survey.coordinates.groups)) {
   if (value.partitions) {
     manifest.survey.coordinates.groups[group].partitions = [];
-    for (const descriptor of value.partitions) manifest.survey.coordinates.groups[group].partitions.push(await repack(descriptor));
-  } else manifest.survey.coordinates.groups[group] = await repack(value);
+    for (const descriptor of value.partitions) manifest.survey.coordinates.groups[group].partitions.push(await repack(descriptor,
+      candidateKind === 'coordinate' ? candidateCoordinates.get(descriptor.path) : null));
+  } else manifest.survey.coordinates.groups[group] = await repack(value, candidateKind === 'coordinate' ? candidateCoordinates.get(value.path) : null);
 }
 
 manifest.provenance.source_release = {
@@ -249,12 +274,12 @@ manifest.provenance.source_release = {
 };
 delete manifest.provenance.build_stages;
 manifest.provenance.repack = {
-  operation: candidateKind === 'family' ? 'lossless_bundled_family_transport' : 'lossless_bundled_survey_transport', source_build_id: source.build_id,
+  operation: {family: 'lossless_bundled_family_transport', scalar: 'lossless_bundled_survey_transport', coordinate: 'lossless_packed_coordinate_transport'}[candidateKind], source_build_id: source.build_id,
   source_manifest_sha256: sha256(sourceBytes), [`${candidateKind}_candidate_sha256`]: sha256(candidateBytes),
   [`${candidateKind}_encoding`]: candidateEncoding,
   code_sha256: Object.fromEntries(await Promise.all([
     './repack_bundled_release.mjs', './output_scope.mjs', './verify_release_inventory.mjs',
-    '../core/survey-codec.js', '../core/bundled-survey-codec.js', '../core/bundled-family-codec.js', '../core/shared-survey-codec.js',
+    '../core/survey-codec.js', '../core/bundled-survey-codec.js', '../core/bundled-family-codec.js', '../core/shared-survey-codec.js', '../core/packed-coordinate-codec.js',
   ].map(async file => [file, sha256(await readFile(new URL(file, import.meta.url)))]))),
   note: 'Storage transformation only. Scientific rows and source selection are unchanged; source stage history is retained separately.',
 };

@@ -9,6 +9,7 @@ import {encodeCoordinateRows, encodeFamilyRows, encodeInteractionRows, encodeSur
 import {SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn} from '../core/shared-survey-codec.js';
 import {BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle} from '../core/bundled-survey-codec.js';
 import {BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle} from '../core/bundled-family-codec.js';
+import {PACKED_COORDINATE_ENCODING, expandPackedCoordinates} from '../core/packed-coordinate-codec.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',sugar_torsion:'Sugar Torsions',
@@ -295,7 +296,7 @@ export async function validateRelease(manifestPath) {
     return (await verifyFamilyBundle(reference, payload)).bundle;
   };
   const encodings = new Set([BUNDLED_FAMILY_ENCODING, BUNDLED_SURVEY_ENCODING, SHARED_SURVEY_ENCODING, SURVEY_COLUMNAR_ENCODING,
-    COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING]);
+    PACKED_COORDINATE_ENCODING, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING]);
   const load = async descriptor => {
     const data = await readAsset(descriptor);
     if (descriptor.encoding !== undefined || encodings.has(data?.encoding)) {
@@ -326,6 +327,7 @@ export async function validateRelease(manifestPath) {
       return decodeSurveyRows(expanded);
     }
     if (descriptor.encoding === SURVEY_COLUMNAR_ENCODING) return decodeSurveyRows(data);
+    if (descriptor.encoding === PACKED_COORDINATE_ENCODING) return decodeCoordinateRows(expandPackedCoordinates(data));
     if (descriptor.encoding === COORDINATE_COLUMNAR_ENCODING) return decodeCoordinateRows(data);
     if (descriptor.encoding === FAMILY_COLUMNAR_ENCODING) return decodeFamilyRows(data);
     if (descriptor.encoding === INTERACTION_COLUMNAR_ENCODING) return decodeInteractionRows(data);

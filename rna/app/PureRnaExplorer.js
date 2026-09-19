@@ -568,6 +568,11 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   async renderCoordinates(state, revision) {
     const groupChoices = Object.keys(this.manifest.survey.coordinates.groups ?? {});
     const group = groupChoices.includes(state.survey.coordinateGroup) ? state.survey.coordinateGroup : groupChoices.find(key => key.includes('cytosine_standard_pair')) ?? groupChoices[0];
+    if (!this.current(revision)) return;
+    const coordinateKey = JSON.stringify({ build: this.manifest.build_id, group,
+      selection: state.selection, context: state.survey.coordinateContext, opening: state.survey.coordinateOpening });
+    if (this.completedCoordinateKey === coordinateKey) return;
+    this.completedCoordinateKey = null;
     const eligible = selectRows([], this.metadata, state.selection).entryIds;
     const eligiblePairs = group?.includes('cytosine_standard_pair') ? (await this.openingIndex(state)).pairs : null;
     if (!this.current(revision)) return;
@@ -603,6 +608,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       const precise = value => Number.isFinite(value) ? value.toFixed(4) : '—';
       this.$('baseGeometryCoordBody').replaceChildren(...averages.map(item => { const row = element('tr'); row.append(...[item.atom, number(item.n), number(item.residues), item.pairs === null ? 'Not applicable' : number(item.pairs), number(item.entries), ...item.mean.map(precise), precise(item.rms)].map(value => element('td', {}, value))); return row; }));
       if (!averages.length) { const row = element('tr'); row.append(element('td', { colspan: '9' }, 'No coordinate observations match the current filters.')); this.$('baseGeometryCoordBody').append(row); }
+      this.completedCoordinateKey = coordinateKey;
     });
     if (this.lastCoordinateGroup && this.lastCoordinateGroup !== group) this.repository.releaseSurvey?.('coordinates', this.lastCoordinateGroup);
     this.lastCoordinateGroup = group;

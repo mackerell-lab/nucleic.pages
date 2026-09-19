@@ -1,6 +1,8 @@
 import { normalizeParameter, parameterValue } from './registry.js';
 import { entryId, methodKey, tagValues, interactionFamily } from './selection.js';
 import { wrapCircular, smoothCounts, summary, correlation } from '../math/numeric.js';
+import { chooseCircularCut } from './circular-axis.js';
+import { chooseLinearRange } from './linear-axis.js';
 
 export function groupKeys(row, grouping = 'base') {
   if (typeof grouping === 'function') return tagValues(grouping(row));
@@ -17,40 +19,14 @@ export function groupKeys(row, grouping = 'base') {
   return tagValues(row[grouping]).length ? tagValues(row[grouping]) : ['Unknown'];
 }
 
-function linearRange(values, requested) {
-  if (requested) {
-    if (requested.length !== 2 || !requested.every(Number.isFinite) || !(requested[1] > requested[0])) throw new Error('Invalid plot range');
-    return [...requested];
-  }
-  let min = Infinity, max = -Infinity;
-  for (const value of values) { min = Math.min(min, value); max = Math.max(max, value); }
-  if (!values.length) return [0, 1];
-  const pad = min === max ? Math.max(1, Math.abs(min) * 0.1) : (max - min) * 0.1;
-  return [min - pad, max + pad];
-}
-
-function chooseCut(values, period, bins, mode) {
-  if (mode === 'signed_180' || mode === 'signed') return -period / 2;
-  if (mode !== 'auto' || !values.length) return 0;
-  // A tenth-period low-density window generalizes DNA's 36-degree seam search.
-  const counts = new Float64Array(bins);
-  for (const value of values) counts[Math.min(bins - 1, Math.floor(wrapCircular(value, period) / period * bins))]++;
-  const smooth = smoothCounts(counts, 1.2, true), width = Math.max(1, Math.round(bins / 10));
-  let cut = 0, minimum = Infinity;
-  for (let i = 0; i < bins; i++) {
-    let mass = 0;
-    for (let j = -Math.floor(width / 2); j <= Math.floor(width / 2); j++) mass += smooth[(i + j + bins) % bins];
-    if (mass < minimum) { minimum = mass; cut = i; }
-  }
-  return cut * period / bins;
-}
-
 function configuration(values, parameter, display = {}, joint = false) {
   const fine = display.fine || display.detail === 'fine';
   const bins = display.bins || (parameter.period ? (fine ? 144 : 72) : joint ? (fine ? 96 : 48) : (fine ? 128 : 64));
   if (!Number.isInteger(bins) || bins < 1 || bins > 2048) throw new Error('Bin count must be an integer from 1 to 2048');
-  const cut = parameter.period ? chooseCut(values, parameter.period, bins, display.circularMode || 'auto') : null;
-  const range = parameter.period ? [cut, cut + parameter.period] : linearRange(values, display.range || parameter.range);
+  const cut = parameter.period ? chooseCircularCut(values, parameter.period, bins, display.circularMode || 'auto') : null;
+  const range = parameter.period ? [cut, cut + parameter.period] : chooseLinearRange(values, {
+    requested: display.range ?? parameter.range, defaultRange: parameter.display_range_default,
+  });
   return { bins, cut, range, width: (range[1] - range[0]) / bins };
 }
 

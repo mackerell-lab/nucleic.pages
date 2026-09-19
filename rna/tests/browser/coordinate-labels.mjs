@@ -121,10 +121,10 @@ try {
   assert.equal(requests, initialRequests);
   check('Latest label choice wins during an awaited Plotly commit');
   await page.evaluate(() => {
-    const app = window.rnaExplorer, original = app.renderJoint.bind(app);
+    const app = window.rnaExplorer, original = app.plot.bind(app);
     window.jointLabelHeld = false;
-    app.renderJoint = async (...args) => {
-      if (!window.jointLabelHeld) {
+    app.plot = async (...args) => {
+      if (args[0].id === 'jointPlot' && !window.jointLabelHeld) {
         window.jointLabelHeld = true;
         await new Promise(resolve => { window.releaseJointLabel = resolve; });
       }

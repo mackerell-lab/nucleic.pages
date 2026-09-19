@@ -2,6 +2,7 @@ import { decodeCoordinateRows, decodeFamilyRows, decodeInteractionRows, decodeSu
 import { SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn } from './shared-survey-codec.js';
 import { BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle } from './bundled-survey-codec.js';
 import { BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle } from './bundled-family-codec.js';
+import { PACKED_COORDINATE_ENCODING, expandPackedCoordinates } from './packed-coordinate-codec.js';
 
 /** A session pins one immutable RNA release; rejected requests can be retried. */
 const immutableData = new WeakSet();
@@ -250,9 +251,16 @@ export class RnaDataRepository {
           }).catch(() => {});
         }
       }
-      const data = await request;
+      let data = await request;
       if (signal?.aborted) throw signal.reason || new Error('RNA coordinate loading was cancelled');
       if (data.build_id && data.build_id !== manifest.build_id) throw new Error('Cross-build RNA coordinate partition');
+      if ((data.encoding === PACKED_COORDINATE_ENCODING || partition.encoding === PACKED_COORDINATE_ENCODING)
+          && data.encoding !== partition.encoding) throw new Error('RNA coordinate partition encoding mismatch');
+      if (data.encoding === PACKED_COORDINATE_ENCODING) {
+        if (data.build_id !== manifest.build_id) throw new Error('Cross-build RNA coordinate partition');
+        if (descriptor.partitions && data.row_count > 10000) throw new Error('RNA coordinate partition exceeds 10000 rows');
+        data = expandPackedCoordinates(data);
+      }
       const sourceRows = data.encoding === COORDINATE_COLUMNAR_ENCODING ? decodeCoordinateRows(data) : (Array.isArray(data) ? data : data.rows);
       if (!Array.isArray(sourceRows)) throw new Error('RNA coordinate partition requires rows');
       if (partition.row_count != null && partition.row_count !== sourceRows.length) throw new Error('RNA coordinate partition row count mismatch');

@@ -1,6 +1,7 @@
 import { decodeCoordinateRows, decodeFamilyRows, decodeInteractionRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from './survey-codec.js';
 import { SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn } from './shared-survey-codec.js';
 import { BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle } from './bundled-survey-codec.js';
+import { BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle } from './bundled-family-codec.js';
 
 /** A session pins one immutable RNA release; rejected requests can be retried. */
 const immutableData = new WeakSet();
@@ -112,9 +113,15 @@ export class RnaDataRepository {
       if (!descriptor) throw new Error(`RNA asset is unavailable: ${key}`);
       const path = typeof descriptor === 'string' ? descriptor : descriptor.path;
       if (!path) throw new Error(`RNA asset has no path: ${key}`);
-      const data = await this.readJson(new URL(path, this.releaseUrl).href);
+      let data = await this.readJson(new URL(path, this.releaseUrl).href);
       if (data.build_id && data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA asset: ${key}`);
       if (key.startsWith('family:')) {
+        if ((data.encoding === BUNDLED_FAMILY_ENCODING || descriptor.encoding === BUNDLED_FAMILY_ENCODING)
+            && descriptor.encoding !== data.encoding) throw new Error(`RNA family encoding mismatch: ${key}`);
+        if (data.encoding === BUNDLED_FAMILY_ENCODING) {
+          if (data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA asset: ${key}`);
+          data = await expandBundledFamilyColumns(data, reference => this.loadFamilyBundle(reference));
+        }
         const rows = data.encoding === FAMILY_COLUMNAR_ENCODING ? decodeFamilyRows(data) : (Array.isArray(data) ? data : data.rows);
         if (!Array.isArray(rows)) throw new Error(`RNA family requires rows: ${key}`);
         const ids = new Set();
@@ -173,18 +180,30 @@ export class RnaDataRepository {
     });
   }
   loadSurveyScalars(termId = null, options = {}) { return this.loadSurvey('scalars', termId, options); }
-  loadSurveyBundle(reference) {
-    if (!/^[a-f0-9]{64}$/.test(reference)) return Promise.reject(new Error('Invalid Survey bundle content hash'));
-    if (this.bundleCache.has(reference)) {
-      const cached = this.bundleCache.get(reference);
-      this.bundleCache.delete(reference); this.bundleCache.set(reference, cached);
+  loadSurveyBundle(reference) { return this.loadVerifiedBundle('survey', reference); }
+  loadFamilyBundle(reference) { return this.loadVerifiedBundle('family', reference); }
+  loadVerifiedBundle(kind, reference) {
+    if (!['survey', 'family'].includes(kind)) return Promise.reject(new Error('Invalid RNA bundle kind'));
+    if (!/^[a-f0-9]{64}$/.test(reference)) return Promise.reject(new Error('Invalid RNA bundle content hash'));
+    const key = kind === 'survey' ? reference : `family:${reference}`;
+    if (this.bundleCache.has(key)) {
+      const cached = this.bundleCache.get(key);
+      this.bundleCache.delete(key); this.bundleCache.set(key, cached);
       return Promise.resolve(cached.bundle);
     }
-    if (!this.bundleRequests.has(reference)) {
+    if (!this.bundleRequests.has(key)) {
       const request = (async () => {
-        await this.loadManifest();
-        const payload = await this.readJson(new URL(`survey/bundles/${reference}.json.gz`, this.releaseUrl).href);
-        const verified = await verifySurveyBundle(reference, payload);
+        const manifest = await this.loadManifest();
+        const relative = `${kind === 'survey' ? 'survey' : 'families'}/bundles/${reference}.json.gz`;
+        if (kind === 'family') {
+          const registry = manifest.family_bundles;
+          const descriptor = registry && Object.hasOwn(registry, reference) ? registry[reference] : null;
+          if (!descriptor || descriptor.path !== relative || descriptor.content_sha256 !== reference) {
+            throw new Error(`Invalid or unregistered RNA family bundle registry entry: ${reference}`);
+          }
+        }
+        const payload = await this.readJson(new URL(relative, this.releaseUrl).href);
+        const verified = await (kind === 'survey' ? verifySurveyBundle : verifyFamilyBundle)(reference, payload);
         deepFreeze(verified.bundle);
         if (verified.byteLength <= this.maxBundleCacheBytes) {
           while (this.bundleCacheBytes + verified.byteLength > this.maxBundleCacheBytes) {
@@ -192,17 +211,17 @@ export class RnaDataRepository {
             this.bundleCacheBytes -= this.bundleCache.get(oldest).byteLength;
             this.bundleCache.delete(oldest);
           }
-          this.bundleCache.set(reference, verified);
+          this.bundleCache.set(key, verified);
           this.bundleCacheBytes += verified.byteLength;
         }
         return verified.bundle;
       })();
-      this.bundleRequests.set(reference, request);
+      this.bundleRequests.set(key, request);
       request.finally(() => {
-        if (this.bundleRequests.get(reference) === request) this.bundleRequests.delete(reference);
+        if (this.bundleRequests.get(key) === request) this.bundleRequests.delete(key);
       }).catch(() => {});
     }
-    return this.bundleRequests.get(reference);
+    return this.bundleRequests.get(key);
   }
   async *iterateSurveyCoordinates(groupKey, { entryIds = null, signal } = {}) {
     const manifest = await this.loadManifest();

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { downloadCsv, waitReady, numericText } from './helpers.mjs';
 import { checkPairControls, checkPuckerSurvey, checkBroadResidueScope, checkPalettes } from './rna-specific-controls.mjs';
+import { configureSurveyCandidate } from './candidate-routing.mjs';
 
 const workspace = path.resolve(process.env.RNA_WORKSPACE || process.cwd());
 const output = path.resolve(process.env.RNA_BROWSER_OUTPUT || path.join(workspace, 'data/pure_rna/browser_validation'));
@@ -72,6 +73,7 @@ async function verifyDistribution(name, button = '#filteredCsvDownload', kind = 
 }
 
 try {
+  if (process.env.RNA_SURVEY_CANDIDATE_URL) report.surveyCandidate = await configureSurveyCandidate(page, process.env.RNA_SURVEY_CANDIDATE_URL);
   const navigationStarted = Date.now();
   await page.goto(report.url, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await waitReady(page);

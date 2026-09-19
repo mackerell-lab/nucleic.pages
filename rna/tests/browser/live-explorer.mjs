@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { downloadCsv, waitReady, numericText } from './helpers.mjs';
 import { checkPairControls, checkPuckerSurvey, checkBroadResidueScope, checkPalettes } from './rna-specific-controls.mjs';
 import { configureSurveyCandidate } from './candidate-routing.mjs';
+import { configureReleaseCandidate } from './release-routing.mjs';
 
 const workspace = path.resolve(process.env.RNA_WORKSPACE || process.cwd());
 const output = path.resolve(process.env.RNA_BROWSER_OUTPUT || path.join(workspace, 'data/pure_rna/browser_validation'));
@@ -73,6 +74,8 @@ async function verifyDistribution(name, button = '#filteredCsvDownload', kind = 
 }
 
 try {
+  if (process.env.RNA_RELEASE_CANDIDATE_URL && process.env.RNA_SURVEY_CANDIDATE_URL) throw new Error('Choose a full release or scalar candidate, not both');
+  if (process.env.RNA_RELEASE_CANDIDATE_URL) report.releaseCandidate = await configureReleaseCandidate(page, process.env.RNA_RELEASE_CANDIDATE_URL);
   if (process.env.RNA_SURVEY_CANDIDATE_URL) report.surveyCandidate = await configureSurveyCandidate(page, process.env.RNA_SURVEY_CANDIDATE_URL);
   const navigationStarted = Date.now();
   await page.goto(report.url, { waitUntil: 'domcontentloaded', timeout: 120000 });
@@ -80,6 +83,10 @@ try {
   report.initialReadyMs = Date.now() - navigationStarted;
   assert.equal(await page.title(), 'Pure RNA Explorer');
   const release = await page.evaluate(() => window.rnaExplorer.repository.loadManifest());
+  if (report.releaseCandidate) {
+    assert.equal(release.build_id, report.releaseCandidate.buildId, 'Explorer did not select the staged release');
+    assert.equal(await page.evaluate(() => window.rnaExplorer.repository.releaseUrl), report.releaseCandidate.candidateUrl);
+  }
   report.release = { buildId: release.build_id, partial: release.partial === true, counts: release.counts, capabilities: release.capabilities };
   assert(!release.partial || process.env.RNA_ALLOW_PARTIAL === '1', 'Partial releases require RNA_ALLOW_PARTIAL=1 and establish integration evidence only');
   await page.waitForFunction(() => document.querySelector('#plot')?.data?.length > 0);
@@ -258,6 +265,7 @@ try {
   assert.deepEqual(report.consoleErrors, [], 'Browser console errors');
   assert.deepEqual(report.failedRequests, [], 'Failed network requests');
   assert(report.responses.every(response => response.status < 400), 'HTTP error responses');
+  if (report.releaseCandidate) assert(!report.responses.some(response => /\/assets\/pure_rna\/releases\//.test(response.url)), 'Staged release test fetched published release resources');
   report.passed = true;
 } catch (error) {
   report.passed = false; report.failure = { message: error.message, stack: error.stack };

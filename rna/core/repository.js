@@ -3,6 +3,7 @@ import { SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn }
 import { BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle } from './bundled-survey-codec.js';
 import { BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle } from './bundled-family-codec.js';
 import { PACKED_COORDINATE_ENCODING, expandPackedCoordinates } from './packed-coordinate-codec.js';
+import { PACKED_FAMILY_ENCODING, expandPackedFamily } from './packed-family-codec.js';
 
 /** A session pins one immutable RNA release; rejected requests can be retried. */
 const immutableData = new WeakSet();
@@ -117,8 +118,13 @@ export class RnaDataRepository {
       let data = await this.readJson(new URL(path, this.releaseUrl).href);
       if (data.build_id && data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA asset: ${key}`);
       if (key.startsWith('family:')) {
-        if ((data.encoding === BUNDLED_FAMILY_ENCODING || descriptor.encoding === BUNDLED_FAMILY_ENCODING)
+        if (([BUNDLED_FAMILY_ENCODING, PACKED_FAMILY_ENCODING].includes(data.encoding)
+            || [BUNDLED_FAMILY_ENCODING, PACKED_FAMILY_ENCODING].includes(descriptor.encoding))
             && descriptor.encoding !== data.encoding) throw new Error(`RNA family encoding mismatch: ${key}`);
+        if (data.encoding === PACKED_FAMILY_ENCODING) {
+          if (data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA asset: ${key}`);
+          data = expandPackedFamily(data);
+        }
         if (data.encoding === BUNDLED_FAMILY_ENCODING) {
           if (data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA asset: ${key}`);
           data = await expandBundledFamilyColumns(data, reference => this.loadFamilyBundle(reference));

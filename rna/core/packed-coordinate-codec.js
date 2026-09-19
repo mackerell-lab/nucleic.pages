@@ -39,7 +39,8 @@ function validateArray(values, count, coordinate) {
   return eligible;
 }
 
-function pack(values) {
+export function encodeFloat64Column(values) {
+  if (!Array.isArray(values) || !validateArray(values, values.length, true)) throw new Error('Float64 columns require finite numbers');
   const count = values.length, bytes = new Uint8Array(count * 8), view = new DataView(bytes.buffer);
   for (let index = 0; index < count; index++) view.setFloat64(index * 8, values[index], true);
   const shuffled = new Uint8Array(bytes.length);
@@ -51,7 +52,7 @@ function pack(values) {
   return { encoding: FLOAT64_COLUMN_ENCODING, count, data: btoa(chunks.join('')) };
 }
 
-function unpack(descriptor, count) {
+export function decodeFloat64Column(descriptor, count) {
   if (!record(descriptor) || Object.keys(descriptor).length !== 3
       || !['encoding', 'count', 'data'].every(key => Object.hasOwn(descriptor, key))
       || descriptor.encoding !== FLOAT64_COLUMN_ENCODING || !countIsValid(descriptor.count) || descriptor.count !== count) {
@@ -82,7 +83,7 @@ export function encodePackedCoordinates(data) {
     if (validateArray(values, data.row_count, axes.has(key)) && axes.has(key) && !(data.missing?.[key]?.length)) eligible.add(key);
   }
   const columns = {};
-  for (const [key, values] of Object.entries(data.columns)) define(columns, key, eligible.has(key) ? pack(values) : values);
+  for (const [key, values] of Object.entries(data.columns)) define(columns, key, eligible.has(key) ? encodeFloat64Column(values) : values);
   return { ...data, encoding: PACKED_COORDINATE_ENCODING, columns };
 }
 
@@ -93,7 +94,7 @@ export function expandPackedCoordinates(data) {
     let values = descriptor;
     if (!Array.isArray(descriptor)) {
       if (!axes.has(key)) throw new Error('Only x/y/z coordinate columns may be packed');
-      values = unpack(descriptor, data.row_count);
+      values = decodeFloat64Column(descriptor, data.row_count);
     }
     validateArray(values, data.row_count, axes.has(key));
     define(columns, key, values);

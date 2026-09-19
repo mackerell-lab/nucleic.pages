@@ -100,7 +100,34 @@
         <div id="annotationCards" class="card-grid compact-grid"></div>
         <details class="rna-details"><summary>Selection, chemistry, and statistical interpretation</summary><p>Pure RNA describes polymer composition. Magnesium, other ions, water, and organic ligands are handled by the component profile. Canonical eligibility uses the full declared A/C/G/U sequence, including unmodeled positions; a sequence does not have to contain U to be RNA.</p><p>NAKB function and structure annotations can overlap and can belong to different RNA entities within one entry. An unannotated structure is not evidence that a feature is absent. Resolution applies to the selected experimental method; NMR entries are not assigned a diffraction resolution.</p><p>RNA backbone torsions, pseudotorsions, sugar pucker, and glycosidic geometry have explicit atom requirements. RNA-specific pucker and suite information should not be interpreted using DNA BI/BII or A/B-form thresholds. Pair and step measurements describe only their supported local interactions.</p><p>Observations from one structure, chain, or base pair are related. Distribution widths describe this structural collection and are not confidence intervals or free-energy profiles. Circular mean directions may be undefined for symmetric or nearly uniform data.</p></details>
         <details class="rna-details"><summary>Dataset details and supported capabilities</summary><pre id="datasetProvenance"></pre></details>
-        <p class="rna-note"><a href="https://www.rcsb.org/" target="_blank" rel="noopener noreferrer">RCSB PDB</a> · <a href="https://nakb.org/annotations.html" target="_blank" rel="noopener noreferrer">NAKB annotations</a> · <a href="https://rna.bgsu.edu/rna3dhub/" target="_blank" rel="noopener noreferrer">RNA 3D Hub</a></p>
+      </section>
+
+      <section class="panel" id="rnaReferencesSection" aria-labelledby="rnaReferencesHeading">
+        <div class="panel-head"><h2 id="rnaReferencesHeading">Data Sources, Tools &amp; References</h2><p>Sources of the structures and annotations, methods referenced, and software used to prepare and display this dataset.</p></div>
+        <div class="card-grid">
+          <article class="card">
+            <span class="kind">Structure data</span>
+            <h3><a href="https://www.rcsb.org/" target="_blank" rel="noopener noreferrer">RCSB Protein Data Bank</a></h3>
+            <p class="rna-note">Deposited structures, atomic coordinates, sequences and experimental metadata come from the Protein Data Bank archive and are retrieved through RCSB PDB.</p>
+            <p class="rna-note">Berman et al. (2000). <a href="https://doi.org/10.1093/nar/28.1.235" target="_blank" rel="noopener noreferrer">The Protein Data Bank</a>. <em>Nucleic Acids Research</em> 28, 235–242.</p>
+            <p class="rna-note"><a href="https://www.rcsb.org/pages/policies" target="_blank" rel="noopener noreferrer">Official citation guidance</a>. Individual PDB entries link to their structure records and original publications.</p>
+          </article>
+          <article class="card">
+            <span class="kind">RNA annotations</span>
+            <h3><a href="https://nakb.org/" target="_blank" rel="noopener noreferrer">Nucleic Acid Knowledgebase (NAKB)</a></h3>
+            <p class="rna-note">RNA type, function and structural annotations are obtained from NAKB. Labels can overlap and retain their recorded RNA entity scope; missing annotations remain unknown.</p>
+            <p class="rna-note">Lawson et al. (2024). <a href="https://doi.org/10.1093/nar/gkad957" target="_blank" rel="noopener noreferrer">The Nucleic Acid Knowledgebase: a new portal for 3D structural information about nucleic acids</a>.</p>
+            <p class="rna-note"><a href="https://nakb.org/annotations.html" target="_blank" rel="noopener noreferrer">Annotation definitions</a></p>
+          </article>
+          <article class="card">
+            <span class="kind">Method and reference data</span>
+            <h3>3DNA / X3DNA</h3>
+            <p class="rna-note">Geometry conventions and standard base reference coordinates follow 3DNA references. The Explorer's geometry calculations are independently implemented; no 3DNA source code or executable is incorporated into the Explorer.</p>
+            <p class="rna-note">A separately installed 3DNA executable was used for independent numerical validation on selected reference structures, not to generate this release's production measurements.</p>
+            <p class="rna-note">Lu &amp; Olson (2003). <a href="https://doi.org/10.1093/nar/gkg680" target="_blank" rel="noopener noreferrer">3DNA: a software package for the analysis, rebuilding and visualization of three-dimensional nucleic acid structures</a>.</p>
+          </article>
+        </div>
+        <p class="rna-note"><strong>Additional tools used:</strong> <a href="https://github.com/BGSU-RNA/fr3d-python" target="_blank" rel="noopener noreferrer">FR3D</a> for RNA interaction annotation during dataset preparation; <a href="https://gemmi.readthedocs.io/" target="_blank" rel="noopener noreferrer">Gemmi</a> for mmCIF parsing; <a href="https://plotly.com/javascript/" target="_blank" rel="noopener noreferrer">Plotly.js</a> for interactive plots.</p>
       </section>
       <noscript><p class="rna-status">JavaScript is required to load the local RNA tables and draw interactive plots.</p></noscript>
     </div>

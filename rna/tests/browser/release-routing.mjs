@@ -47,6 +47,14 @@ export async function configureReleaseCandidate(page, manifestUrl) {
         || !count(family.row_count)) throw new Error('Invalid release candidate family');
     asset(family);
   }
+  if (manifest.family_bundles !== undefined) {
+    if (!record(manifest.family_bundles)) throw new Error('Invalid release candidate family bundle registry');
+    for (const [reference, descriptor] of Object.entries(manifest.family_bundles)) {
+      if (!/^[a-f0-9]{64}$/.test(reference) || descriptor.content_sha256 !== reference
+          || descriptor.path !== `families/bundles/${reference}.json.gz`) throw new Error('Invalid release candidate family bundle');
+      asset(descriptor);
+    }
+  }
   for (const kind of ['observations', 'interactions']) asset(manifest.relations?.[kind]);
   const terms = manifest.survey?.scalars?.terms;
   const groups = manifest.survey?.coordinates?.groups;
@@ -76,5 +84,6 @@ export async function configureReleaseCandidate(page, manifestUrl) {
   });
   return { candidateUrl: url.href, buildId: manifest.build_id, partial: false, counts: manifest.counts,
     familyCount: manifest.families.length, termCount: Object.keys(terms).length,
-    coordinatePartitions, bundleCount: Object.keys(manifest.survey.bundles ?? {}).length };
+    coordinatePartitions, bundleCount: Object.keys(manifest.survey.bundles ?? {}).length,
+    familyBundleCount: Object.keys(manifest.family_bundles ?? {}).length };
 }

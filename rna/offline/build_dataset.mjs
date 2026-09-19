@@ -72,8 +72,8 @@ async function stageFiles(stage) {
     residue:['residue_geometry.mjs','parameter_registry.mjs',...numeric],
     geometry:['interactions.mjs','geometry_adapter.mjs','stem_projection.mjs','fr3d_provider.py',...numeric],
     survey:['survey.mjs','survey_terms.mjs',...numeric],
-    assets:['assets.mjs','../core/survey-codec.js','parameter_registry.mjs','survey_terms.mjs','../config/geometry_parameters_v1.json'],
-    'validate-release':['assets.mjs','../core/survey-codec.js'],
+    assets:['assets.mjs','../core/survey-codec.js','../core/shared-survey-codec.js','parameter_registry.mjs','survey_terms.mjs','../config/geometry_parameters_v1.json'],
+    'validate-release':['assets.mjs','../core/survey-codec.js','../core/shared-survey-codec.js'],
   };
   return [...new Set([...common,...mapping[stage]])];
 }

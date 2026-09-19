@@ -6,6 +6,7 @@ import {RESIDUE_PARAMETERS} from './parameter_registry.mjs';
 import {TERM_REGISTRY,publicBaseGeometryConfig} from './survey_terms.mjs';
 import {readJson, sha256} from './output_scope.mjs';
 import {encodeCoordinateRows, encodeFamilyRows, encodeInteractionRows, encodeSurveyRows, decodeCoordinateRows, decodeFamilyRows, decodeInteractionRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
+import {SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn} from '../core/shared-survey-codec.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',sugar_torsion:'Sugar Torsions',
@@ -240,6 +241,15 @@ export async function validateRelease(manifestPath) {
     const bytes = await fs.readFile(path.join(root,descriptor.path));
     if (sha256(bytes) !== descriptor.sha256) throw new Error(`Asset hash mismatch: ${descriptor.path}`);
     const data = JSON.parse((descriptor.path.endsWith('.gz') ? gunzipSync(bytes) : bytes).toString());
+    if (descriptor.encoding === SHARED_SURVEY_ENCODING) {
+      const expanded = await expandSharedSurveyColumns(data, async reference => {
+        if (!/^[a-f0-9]{64}$/.test(reference)) throw new Error('Invalid shared Survey content hash');
+        const columnBytes = await fs.readFile(path.join(root, 'survey/columns', `${reference}.json.gz`));
+        const values = JSON.parse(gunzipSync(columnBytes).toString());
+        return verifySharedColumn(reference, values);
+      });
+      return decodeSurveyRows(expanded);
+    }
     if (descriptor.encoding === SURVEY_COLUMNAR_ENCODING) return decodeSurveyRows(data);
     if (descriptor.encoding === COORDINATE_COLUMNAR_ENCODING) return decodeCoordinateRows(data);
     if (descriptor.encoding === FAMILY_COLUMNAR_ENCODING) return decodeFamilyRows(data);

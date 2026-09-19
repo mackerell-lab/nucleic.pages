@@ -4,6 +4,7 @@ import { selectRows, methodKey } from '../core/selection.js';
 import { distribution, histogram2D } from '../core/analysis.js';
 import { join } from '../core/joints.js';
 import { jointSelectionSpecs } from '../core/joint-selection.js';
+import { jointOptions } from '../core/joint-options.js';
 import { rankSurveyContexts, orderSurveyRanks, surveyContext } from '../core/survey-ranking.js';
 import { CoordinateSummary } from '../core/coordinates.js';
 import { csv, createPlotSnapshot, provenance } from '../core/export.js';
@@ -116,6 +117,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       if (['labels', 'contourCount'].includes(key) && this.state.joint.type === 'heatmap') return;
       this.state.joint[key] = key === 'labels' ? value === 'on' : key === 'contourCount' ? Number(value) : value;
       if (key === 'type') this.updateJointContourControls();
+      if (key === 'mode') this.updateSelectors();
       this.requestJointOnly();
     } });
     add('jointControls', 'jointJoinModeGroup', 'Join Mode', [['identity', 'Same observation'], ['relation', 'Pair → Residue']], joint.mode, 'mode');
@@ -154,8 +156,13 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const families = this.families.map(family => ({ id: family.id, label: family.label ?? family.name ?? family.id.replaceAll('_', ' ') }));
     options(this.$('familySelect'), families, this.state.familyId);
     options(this.$('parameterSelect'), this.parameters(), this.state.parameterId);
-    options(this.$('family2Select'), [{ id: '', label: 'Select a second family…' }, ...families], this.state.family2Id);
-    options(this.$('parameter2Select'), this.state.family2Id ? this.parameters(this.state.family2Id) : [{ id: '', label: 'Select a family first' }], this.state.parameter2Id);
+    const compatible = jointOptions(this.manifest, { ...this.state, mode: this.state.joint.mode });
+    this.state.family2Id = compatible.family2Id; this.state.parameter2Id = compatible.parameter2Id;
+    options(this.$('family2Select'), [{ id: '', label: compatible.available ? 'None — select a second family…' : 'No compatible secondary family' }, ...compatible.families], this.state.family2Id);
+    options(this.$('parameter2Select'), compatible.parameters.length ? compatible.parameters : [{ id: '', label: 'Select a compatible family first' }], this.state.parameter2Id);
+    this.$('family2Select').disabled = !compatible.available;
+    this.$('parameter2Select').disabled = !compatible.parameters.length;
+    this.$('jointNote').textContent = compatible.message;
   }
 
   bindEvents() {
@@ -171,8 +178,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       if (this.parameters()[0].level !== 'pair' && this.state.display.groupBy === 'interactionFamily') this.state.display.groupBy = 'base';
       this.updateSelectors(); this.requestRender();
     });
-    this.listen(this.$('parameterSelect'), 'change', event => { this.state.parameterId = event.target.value; this.requestRender(); });
-    this.listen(this.$('family2Select'), 'change', event => { this.state.family2Id = event.target.value; this.state.parameter2Id = this.parameters(event.target.value)[0]?.id ?? ''; this.updateSelectors(); this.requestRender(); });
+    this.listen(this.$('parameterSelect'), 'change', event => { this.state.parameterId = event.target.value; this.updateSelectors(); this.requestRender(); });
+    this.listen(this.$('family2Select'), 'change', event => { this.state.family2Id = event.target.value; this.state.parameter2Id = ''; this.updateSelectors(); this.requestRender(); });
     this.listen(this.$('parameter2Select'), 'change', event => { this.state.parameter2Id = event.target.value; this.requestRender(); });
     for (const [id, key] of [['filteredCsvDownload', 'distribution'], ['jointCsvDownload', 'joint'], ['surveyCsvDownload', 'survey']]) this.listen(this.$(id), 'click', () => this.exportSnapshot(key));
     this.listen(this.$('plotProvenanceDownload'), 'click', () => { if (this.snapshots.distribution) download(`pure-rna-${this.manifest.build_id}-provenance.json`, provenance(this.snapshots.distribution), 'application/json'); });
@@ -380,7 +387,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       const finite = rows.filter(row => parameterValue(row, parameter) !== null).length;
       card.append(element('p', { className: 'meta' }, `${number(finite)} / ${number(rows.length)} finite`));
       const plot = element('div', { className: 'rna-mini-plot', 'aria-hidden': 'true' }); card.append(plot); container.append(card);
-      card.addEventListener('click', () => { this.state.parameterId = parameter.id; this.$('parameterSelect').value = parameter.id; this.requestRender(); });
+      card.addEventListener('click', () => { this.state.parameterId = parameter.id; this.updateSelectors(); this.requestRender(); });
       await this.plot(plot, distributionTraces(result, { traceStyle: 'line' }), plotLayout(parameter, state.display.normalization, { height: 150, margin: { l: 30, r: 8, t: 4, b: 30 }, showlegend: false, xaxis: { title: '', tickfont: { size: 10 } }, yaxis: { title: '', tickfont: { size: 10 } } }));
     }
     if (this.current(revision)) this.overviewKey = key;

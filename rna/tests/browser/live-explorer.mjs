@@ -178,8 +178,11 @@ try {
   await waitReady(page);
   await page.selectOption('#parameterSelect', 'opening');
   await waitReady(page);
-  await page.selectOption('#parameter2Select', 'chi');
   await page.locator('#jointJoinModeGroup button').filter({ hasText: 'Pair' }).click();
+  await waitReady(page);
+  await page.selectOption('#family2Select', 'backbone');
+  await waitReady(page);
+  await page.selectOption('#parameter2Select', 'chi');
   await waitReady(page);
   await page.waitForFunction(() => window.rnaExplorer.snapshots.joint?.result?.points?.length > 0, null, { timeout: 120000 });
   const endpointJoint = await snapshot('joint');

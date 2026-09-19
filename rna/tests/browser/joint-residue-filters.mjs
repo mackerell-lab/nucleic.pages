@@ -19,10 +19,9 @@ try {
   await page.goto(process.env.RNA_URL || 'http://127.0.0.1:8767/nucleic.pages/rna/'); await waitReady(page);
   await page.selectOption('#familySelect', 'base_pair'); await waitReady(page);
   await page.selectOption('#parameterSelect', 'opening'); await waitReady(page);
+  await page.click('#jointJoinModeGroup button[data-value="relation"]'); await waitReady(page);
   await page.selectOption('#family2Select', 'backbone'); await waitReady(page);
   await page.selectOption('#parameter2Select', 'chi'); await waitReady(page);
-  assert(await page.locator('#jointPlot').textContent().then(text => text.includes('same residue, pair, or step level')));
-  await page.click('#jointJoinModeGroup button[data-value="relation"]'); await waitReady(page);
   const baseline = await page.evaluate(async () => {
     const app = window.rnaExplorer;
     if (app.manifest.partial) throw new Error('Full RNA release required');
@@ -69,10 +68,12 @@ try {
     });
     report.checks.push({ name: `Uracil pucker ${choice} subset and CSV`, points: evidence.actual.length, pucker });
   }
-  await page.selectOption('#family2Select', 'base_pair'); await waitReady(page);
+  assert.equal(await page.locator('#family2Select option[value="base_pair"]').count(), 0);
+  await page.selectOption('#family2Select', ''); await waitReady(page);
   assert(await page.locator('#jointCsvDownload').isDisabled());
-  assert((await page.locator('#jointPlot').textContent()).includes('one pair parameter and one residue parameter'));
-  report.checks.push({ name: 'Invalid relation disables stale export' });
+  assert((await page.locator('#jointPlot').textContent()).includes('Select a second parameter'));
+  assert.equal(await page.evaluate(() => window.rnaExplorer.snapshots.joint), null);
+  report.checks.push({ name: 'Incompatible relation unavailable and None disables stale export' });
   assert.deepEqual(report.errors, []); report.passed = true;
 } catch (error) { report.passed = false; report.failure = error.stack; throw error; }
 finally { report.finishedAt = new Date().toISOString(); await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); await browser.close(); }

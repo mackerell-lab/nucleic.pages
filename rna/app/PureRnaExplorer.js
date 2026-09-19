@@ -167,7 +167,13 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.listen(this.$('coordinateOpeningSelect'), 'change', event => { this.state.survey.coordinateOpening = event.target.value; this.requestRender(); });
     this.listen(this.$('surveyOpeningSelect'), 'change', event => { this.state.survey.opening = event.target.value; this.requestRender(); });
     this.listen(this.$('surveyRankingLoad'), 'click', () => { this.state.survey.ranking = true; this.requestRender(); });
-    control(this.$('surveyRankingControls'), { id: 'baseGeometryMinObsGroup', title: 'Minimum per opening bin', choices: choices([['5', '5'], ['20', '20'], ['50', '50'], ['100', '100']]), selected: '20', onChange: value => { this.state.survey.minimum = Number(value); this.requestRender(); } });
+    this.renderSurveyRankingControls();
+  }
+
+  renderSurveyRankingControls() {
+    this.$('surveyOpeningSelect').value = this.state.survey.opening;
+    this.$('surveyRankingControls').replaceChildren();
+    control(this.$('surveyRankingControls'), { id: 'baseGeometryMinObsGroup', title: 'Minimum per opening bin', choices: choices([['5', '5'], ['20', '20'], ['50', '50'], ['100', '100']]), selected: String(this.state.survey.minimum), onChange: value => { this.state.survey.minimum = Number(value); this.requestRender(); } });
   }
 
   resetFilters() {
@@ -179,6 +185,9 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.state.survey = { loaded: surveyLoaded, group: 'all', contexts: [], termId: '', opening: 'all', ranking: false, minimum: 20,
       coordinatesLoaded, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all' };
     this.surveyRanks = [];
+    this.rankingOwner = null;
+    this.$('surveyRankingLoad').disabled = false;
+    this.$('surveyRankingLoad').textContent = 'Compute term ranking';
     const rankingBody = this.$('baseGeometryRankingBody');
     if (rankingBody) {
       rankingBody.replaceChildren();
@@ -186,7 +195,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       row.append(element('td', { colspan: '9' }, 'Compute term ranking to compare opening-conditioned terms.'));
       rankingBody.append(row);
     }
-    this.updateSelectors(); this.renderControls();
+    this.updateSelectors(); this.renderControls(); this.renderSurveyRankingControls();
     return this.requestRender();
   }
 
@@ -499,6 +508,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     return result;
   }
   async renderOpeningRanking(terms, state, revision, openingIndex) {
+    const owner = {};
+    this.rankingOwner = owner;
     const ranks = []; this.$('surveyRankingLoad').disabled = true;
     const selectionKey = JSON.stringify({ ...state.selection, contexts: state.survey.contexts ?? [] });
     if (!this.rankingCache.has(selectionKey)) {
@@ -532,7 +543,13 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         }));
         if (!ordered.length) { const row = element('tr'); row.append(element('td', { colspan: '9' }, 'No finite term/context observations in the selected opening bins.')); this.$('baseGeometryRankingBody').append(row); }
       });
-    } finally { this.$('surveyRankingLoad').disabled = false; this.$('surveyRankingLoad').textContent = 'Recompute term ranking'; }
+    } finally {
+      if (this.rankingOwner === owner) {
+        this.rankingOwner = null;
+        this.$('surveyRankingLoad').disabled = false;
+        this.$('surveyRankingLoad').textContent = 'Recompute term ranking';
+      }
+    }
   }
 
   async renderCoordinates(state, revision) {

@@ -604,7 +604,11 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       const openingOptions = [{ id: 'all', label: 'All openings' }, ...bins.map(bin => ({ id: bin.id, label: bin.label ?? bin.id }))];
       options(this.$('coordinateOpeningSelect'), openingOptions, state.survey.coordinateOpening);
       this.$('coordinateBinNote').textContent = bins.length ? `Opening bins: ${bins.map(bin => `${bin.label ?? bin.id} ${bin.include_min ? '[' : '('}${bin.min}, ${bin.max}${bin.include_max ? ']' : ')'}`).join(' · ')}. These are descriptive bins, not RNA conformation thresholds.` : 'This release does not declare opening-bin boundaries; coordinate conditioning is unavailable.';
-      options(this.$('coordinateContextSelect'), [{ id: 'all', label: 'All recorded contexts' }, ...contexts.map(id => ({ id, label: id }))], state.survey.coordinateContext);
+      const contextChoices = contexts.map(id => ({ id, label: id }));
+      if (state.survey.coordinateContext !== 'all' && !contextSet.has(state.survey.coordinateContext)) {
+        contextChoices.push({ id: state.survey.coordinateContext, label: `${state.survey.coordinateContext} (no observations in current filters)` });
+      }
+      options(this.$('coordinateContextSelect'), [{ id: 'all', label: 'All recorded contexts' }, ...contextChoices], state.survey.coordinateContext);
       const precise = value => Number.isFinite(value) ? value.toFixed(4) : '—';
       this.$('baseGeometryCoordBody').replaceChildren(...averages.map(item => { const row = element('tr'); row.append(...[item.atom, number(item.n), number(item.residues), item.pairs === null ? 'Not applicable' : number(item.pairs), number(item.entries), ...item.mean.map(precise), precise(item.rms)].map(value => element('td', {}, value))); return row; }));
       if (!averages.length) { const row = element('tr'); row.append(element('td', { colspan: '9' }, 'No coordinate observations match the current filters.')); this.$('baseGeometryCoordBody').append(row); }

@@ -13,6 +13,7 @@ import { annotationLabel } from '../views/labels.js';
 import { JOINT_PALETTE_OPTIONS, jointColorscale } from '../views/palettes.js';
 import { wrapCircular } from '../math/numeric.js';
 import { coordinateLayout } from '../views/coordinate-layout.js';
+import { jointContourConfig } from '../core/contours.js';
 
 const choices = pairs => pairs.map(([id, label]) => ({ id, label }));
 const rowsOf = table => Array.isArray(table) ? table : table?.rows ?? [];
@@ -452,7 +453,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       const intensityLabel = state.display.normalization === 'density' ? 'Probability density (smoothed)' : 'Probability (smoothed)';
       const hovertemplate = `${axisHover(xParameter, 0, 1)}<br>${axisHover(yParameter, 2, 3)}<br>${intensityLabel}: %{customdata[4]:.4g}<extra></extra>`;
       const common = { x: Array.from(result.x ?? []), y: Array.from(result.y ?? []), z, zmin, zmax, customdata, hovertemplate, colorscale: jointColorscale(state.joint.palette), colorbar: { title: logarithmic ? `log₁₀ ${state.display.normalization}` : state.display.normalization } };
-      const contour = { ...common, type: 'contour', ncontours: state.joint.contourCount, contours: { coloring: state.joint.type === 'filled_contour' ? 'fill' : 'none', showlabels: state.joint.labels }, showscale: state.joint.type !== 'heatmap_contour' };
+      const contourConfig = jointContourConfig(zmin, zmax, state.joint);
+      const contour = { ...common, type: 'contour', ...contourConfig, contours: { ...contourConfig.contours, coloring: state.joint.type === 'filled_contour' ? 'heatmap' : 'none' }, showscale: state.joint.type !== 'heatmap_contour' };
       const traces = state.joint.type === 'heatmap' ? [{ ...common, type: 'heatmap' }] : state.joint.type === 'heatmap_contour' ? [{ ...common, type: 'heatmap' }, contour] : [contour];
       await this.plot(this.$('jointPlot'), traces, plotLayout(xParameter, state.display.normalization, { yaxis: { title: `${yParameter.label ?? yParameter.id}${yParameter.unit ? ` (${yParameter.unit})` : ''}` }, height: 530 }));
       if (!this.current(revision)) return;

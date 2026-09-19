@@ -28,7 +28,7 @@ try {
       const contours = document.getElementById('jointPlot').data.filter(trace => trace.type === 'contour');
       return { type: app.state.joint.type, labels: app.state.joint.labels, count: app.state.joint.contourCount,
         groups: groups.map(group => ({ hidden: group.parentElement.hidden, disabled: [...group.querySelectorAll('button')].every(button => button.disabled), active: group.querySelector('[aria-pressed="true"]')?.dataset.value })),
-        contours: contours.map(trace => ({ labels: trace.contours.showlabels, count: trace.ncontours })),
+        contours: contours.map(trace => ({ labels: trace.contours.showlabels, automatic: trace.autocontour, start: trace.contours.start, end: trace.contours.end, size: trace.contours.size })),
         distributionUnchanged: app.snapshots.distribution === window.contourBaseline.distribution,
         pointsUnchanged: JSON.stringify(app.snapshots.joint.result.points.map(p => [p.left_id, p.right_id, p.x, p.y])) === JSON.stringify(window.contourBaseline.points),
         points: app.snapshots.joint.result.points.length };
@@ -37,7 +37,7 @@ try {
     for (const group of evidence.groups) { assert.equal(group.hidden, type === 'heatmap'); assert.equal(group.disabled, type === 'heatmap'); }
     assert.equal(evidence.groups[0].active, labels ? 'on' : 'off'); assert.equal(evidence.groups[1].active, String(count));
     assert.equal(evidence.contours.length, type === 'heatmap' ? 0 : 1);
-    for (const contour of evidence.contours) { assert.equal(contour.labels, labels); assert.equal(contour.count, count); }
+    for (const contour of evidence.contours) { assert.equal(contour.labels, labels); assert.equal(contour.automatic, false); assert(contour.size > 0); assert(contour.end > contour.start); }
     assert(evidence.distributionUnchanged); assert(evidence.pointsUnchanged); assert(evidence.points > 0);
     report.checks.push({ passed: true, ...evidence });
   }

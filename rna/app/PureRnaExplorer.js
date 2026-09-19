@@ -40,6 +40,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     };
     this.pages = { universe: 0, filtered: 0 }; this.filteredEntries = []; this.contributing = new Set();
     this.rankingCache = new Map();
+    this.fullRenderComplete = false;
     this.entitiesByEntry = new Map(); this.entrySearchText = new Map();
   }
 
@@ -436,14 +437,20 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   async requestRender() {
     const owner = {};
     this.fullRenderOwner = owner;
-    try { return await super.requestRender(); }
-    finally { if (this.fullRenderOwner === owner) this.fullRenderOwner = null; }
+    this.fullRenderComplete = false;
+    const request = this.capture();
+    try {
+      await this.render(request);
+      if (this.current(request.revision)) this.fullRenderComplete = true;
+    } catch (error) {
+      if (this.current(request.revision)) { this.status(error.message, 'error'); console.error(error); }
+    } finally { if (this.fullRenderOwner === owner) this.fullRenderOwner = null; }
   }
 
   async requestJointOnly() {
-    // A new revision cancels the previous render. Preserve its unfinished
-    // panels by refreshing the whole view with the latest joint settings.
-    if (this.fullRenderOwner) return this.requestRender();
+    // A new revision cancels the previous render. Repair unfinished or failed
+    // panels before allowing a joint-only refresh to declare the page ready.
+    if (this.fullRenderOwner || !this.fullRenderComplete) return this.requestRender();
     const request = this.capture();
     this.status('Updating RNA joint measurements…');
     this.$('jointCsvDownload').disabled = true;

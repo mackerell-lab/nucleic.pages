@@ -237,26 +237,66 @@ function groupBy(rows, key) { const groups = new Map(); for (const row of rows) 
 
 export async function validateRelease(manifestPath) {
   const manifest = await readJson(manifestPath), root = path.dirname(manifestPath), errors = [], checks = [];
+  const realRoot = await fs.realpath(root), fullRelease = manifest.partial === false;
+  const usedBundles = new Set(), bundleRegistry = manifest.survey?.bundles;
+  if (bundleRegistry !== undefined && (!bundleRegistry || typeof bundleRegistry !== 'object' || Array.isArray(bundleRegistry))) {
+    throw new Error('Invalid Survey bundle registry');
+  }
+  const readAsset = async (descriptor, {requireHash = true} = {}) => {
+    if (typeof descriptor?.path !== 'string' || !descriptor.path || path.isAbsolute(descriptor.path)
+        || descriptor.path.includes('\\') || descriptor.path.split('/').some(part => !part || part === '.' || part === '..')) {
+      throw new Error('Unsafe asset path');
+    }
+    const file = await fs.realpath(path.join(realRoot, descriptor.path));
+    const relative = path.relative(realRoot, file);
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('Asset path escapes release root');
+    const bytes = await fs.readFile(file);
+    if ((requireHash || descriptor.sha256 !== undefined) && sha256(bytes) !== descriptor.sha256) throw new Error(`Asset hash mismatch: ${descriptor.path}`);
+    if (descriptor.bytes !== undefined && (!Number.isSafeInteger(descriptor.bytes) || descriptor.bytes !== bytes.length)) {
+      throw new Error(`Asset compressed byte size mismatch: ${descriptor.path}`);
+    }
+    const raw = descriptor.path.endsWith('.gz') ? gunzipSync(bytes) : bytes;
+    if (descriptor.uncompressed_bytes !== undefined && (!Number.isSafeInteger(descriptor.uncompressed_bytes) || descriptor.uncompressed_bytes !== raw.length)) {
+      throw new Error(`Asset uncompressed byte size mismatch: ${descriptor.path}`);
+    }
+    const data = JSON.parse(raw.toString());
+    if (data && Object.hasOwn(data, 'build_id') && data.build_id !== manifest.build_id) throw new Error(`Asset build ID mismatch: ${descriptor.path}`);
+    return data;
+  };
+  const readBundle = async reference => {
+    if (!/^[a-f0-9]{64}$/.test(reference)) throw new Error('Invalid Survey bundle content hash');
+    const fixedPath = `survey/bundles/${reference}.json.gz`;
+    const descriptor = bundleRegistry && Object.hasOwn(bundleRegistry, reference) ? bundleRegistry[reference] : null;
+    if (!descriptor && fullRelease) throw new Error(`Unregistered Survey bundle: ${reference}`);
+    if (descriptor && (descriptor.path !== fixedPath || descriptor.content_sha256 !== reference
+        || (fullRelease && (!Number.isSafeInteger(descriptor.bytes) || !Number.isSafeInteger(descriptor.uncompressed_bytes))))) {
+      throw new Error(`Invalid Survey bundle registry descriptor: ${reference}`);
+    }
+    // Legacy partial fixtures may lack inventory descriptors; their content hash
+    // still authenticates the bundle from the same fixed, contained path.
+    const payload = await readAsset(descriptor ?? {path: fixedPath}, {requireHash: Boolean(descriptor)});
+    return (await verifySurveyBundle(reference, payload)).bundle;
+  };
+  const encodings = new Set([BUNDLED_SURVEY_ENCODING, SHARED_SURVEY_ENCODING, SURVEY_COLUMNAR_ENCODING,
+    COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING]);
   const load = async descriptor => {
-    if (!descriptor?.path || path.isAbsolute(descriptor.path) || descriptor.path.split('/').includes('..')) throw new Error('Unsafe asset path');
-    const bytes = await fs.readFile(path.join(root,descriptor.path));
-    if (sha256(bytes) !== descriptor.sha256) throw new Error(`Asset hash mismatch: ${descriptor.path}`);
-    const data = JSON.parse((descriptor.path.endsWith('.gz') ? gunzipSync(bytes) : bytes).toString());
+    const data = await readAsset(descriptor);
+    if (descriptor.encoding !== undefined || encodings.has(data?.encoding)) {
+      if (descriptor.encoding !== data?.encoding) throw new Error(`Asset encoding mismatch: ${descriptor.path}`);
+      if (!encodings.has(descriptor.encoding)) throw new Error(`Unsupported asset encoding: ${descriptor.encoding}`);
+      if (fullRelease && data.build_id !== manifest.build_id) throw new Error(`Asset build ID mismatch: ${descriptor.path}`);
+    }
     if (descriptor.encoding === BUNDLED_SURVEY_ENCODING) {
       const expanded = await expandBundledSurveyColumns(data, async reference => {
-        if (!/^[a-f0-9]{64}$/.test(reference)) throw new Error('Invalid Survey bundle content hash');
-        const bundleBytes = await fs.readFile(path.join(root, 'survey/bundles', `${reference}.json.gz`));
-        const payload = JSON.parse(gunzipSync(bundleBytes).toString());
-        const {bundle} = await verifySurveyBundle(reference, payload);
-        return bundle;
+        usedBundles.add(reference);
+        return readBundle(reference);
       });
       return decodeSurveyRows(expanded);
     }
     if (descriptor.encoding === SHARED_SURVEY_ENCODING) {
       const expanded = await expandSharedSurveyColumns(data, async reference => {
         if (!/^[a-f0-9]{64}$/.test(reference)) throw new Error('Invalid shared Survey content hash');
-        const columnBytes = await fs.readFile(path.join(root, 'survey/columns', `${reference}.json.gz`));
-        const values = JSON.parse(gunzipSync(columnBytes).toString());
+        const values = await readAsset({path:`survey/columns/${reference}.json.gz`}, {requireHash:false});
         return verifySharedColumn(reference, values);
       });
       return decodeSurveyRows(expanded);
@@ -331,6 +371,12 @@ export async function validateRelease(manifestPath) {
       ownership(row,`survey/${id}`);endpoints(row,`survey/${id}`);
       if (row.residue_id && !residueIds.has(row.residue_id)) errors.push(`Survey residue key: ${id}`);
       if (!validValue(row.value,row.status)) errors.push(`Survey value/status: ${id}`);
+    }
+  }
+  for (const reference of Object.keys(bundleRegistry ?? {})) {
+    if (!usedBundles.has(reference)) {
+      await readBundle(reference);
+      if (fullRelease) throw new Error(`Unreferenced Survey bundle: ${reference}`);
     }
   }
   for (const group of Object.values(manifest.survey.coordinates.groups)) {

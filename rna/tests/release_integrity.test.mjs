@@ -108,18 +108,28 @@ test('real RNA numerical output retains release identities and rejects rehashed 
     ['endpoint ownership',pairDescriptor,rows=>{rows[0].endpoint_entities=[];},/Endpoint ownership/],
   ];
   for(const [name,descriptor,mutate,pattern] of cases) await t.test(name,async()=>{
-    const file=path.join(root,descriptor.path),original=await fs.readFile(file),hash=descriptor.sha256;
+    const file=path.join(root,descriptor.path),original=await fs.readFile(file),originalDescriptor={...descriptor};
+    const originalManifest=await fs.readFile(manifestPath);
     const packed=JSON.parse(gunzipSync(original));
     const rows=descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(packed) : descriptor.encoding===COORDINATE_COLUMNAR_ENCODING ? decodeCoordinateRows(packed) : descriptor.encoding===FAMILY_COLUMNAR_ENCODING ? decodeFamilyRows(packed) : packed;
     mutate(rows);
-    const changed=gzipSync(Buffer.from(JSON.stringify(descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? encodeSurveyRows(rows, manifest.build_id) : descriptor.encoding===COORDINATE_COLUMNAR_ENCODING ? encodeCoordinateRows(rows, manifest.build_id) : descriptor.encoding===FAMILY_COLUMNAR_ENCODING ? encodeFamilyRows(rows, manifest.build_id) : rows)));
-    await fs.writeFile(file,changed);descriptor.sha256=sha256(changed);
-    await fs.writeFile(manifestPath,JSON.stringify(manifest));
-    const result=await validateRelease(manifestPath);
-    assert.equal(result.ok,false);assert.ok(result.errors.some(error=>pattern.test(error)),JSON.stringify(result.errors));
-    await fs.writeFile(file,original);descriptor.sha256=hash;
-    await fs.writeFile(manifestPath,JSON.stringify(manifest));
+    const raw=Buffer.from(JSON.stringify(descriptor.encoding===SURVEY_COLUMNAR_ENCODING ? encodeSurveyRows(rows, manifest.build_id) : descriptor.encoding===COORDINATE_COLUMNAR_ENCODING ? encodeCoordinateRows(rows, manifest.build_id) : descriptor.encoding===FAMILY_COLUMNAR_ENCODING ? encodeFamilyRows(rows, manifest.build_id) : rows));
+    const changed=gzipSync(raw);
+    try {
+      await fs.writeFile(file,changed);
+      // Keep transport metadata valid so each mutation tests its scientific rule.
+      Object.assign(descriptor,{sha256:sha256(changed),bytes:changed.length,uncompressed_bytes:raw.length});
+      await fs.writeFile(manifestPath,JSON.stringify(manifest));
+      const result=await validateRelease(manifestPath);
+      assert.equal(result.ok,false);assert.ok(result.errors.some(error=>pattern.test(error)),JSON.stringify(result.errors));
+    } finally {
+      await fs.writeFile(file,original);
+      for(const key of Object.keys(descriptor)) if(!Object.hasOwn(originalDescriptor,key)) delete descriptor[key];
+      Object.assign(descriptor,originalDescriptor);
+      await fs.writeFile(manifestPath,originalManifest);
+    }
   });
+  assert.equal((await validateRelease(manifestPath)).ok,true,'Scientific mutation fixtures restore the valid release');
   await t.test('an activated release cannot be rebuilt in place', async () => {
     const before = await fs.readFile(manifestPath);
     await scope.json(path.join(assetsRoot, 'manifest.json'), {build_id: build.build_id});

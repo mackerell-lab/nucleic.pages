@@ -1,7 +1,7 @@
 {
   "schema_version": "rna-explorer-1",
   "molecule_type": "RNA",
-  "build_id": "full_packed_coordinate_20260919",
-  "manifest": "releases/full_packed_coordinate_20260919/manifest.json",
+  "build_id": "full_packed_family_20260919",
+  "manifest": "releases/full_packed_family_20260919/manifest.json",
   "partial": false
 }

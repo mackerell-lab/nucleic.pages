@@ -10,12 +10,15 @@ import {
   SURVEY_COLUMNAR_ENCODING, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING,
 } from '../core/survey-codec.js';
 import { BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle } from '../core/bundled-survey-codec.js';
+import { BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle } from '../core/bundled-family-codec.js';
+import { SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn } from '../core/shared-survey-codec.js';
+import { releaseDescriptors } from './verify_release_inventory.mjs';
 
 const [sourceArgument, candidateArgument, outputArgument, buildId, ...extra] = process.argv.slice(2);
 if (!sourceArgument || !candidateArgument || !outputArgument || !buildId || extra.length) {
-  throw new Error('Usage: node repack_bundled_release.mjs SOURCE_MANIFEST SCALAR_CANDIDATE NEW_OUTPUT_DIRECTORY NEW_BUILD_ID');
+  throw new Error('Usage: node repack_bundled_release.mjs SOURCE_MANIFEST BUNDLED_CANDIDATE NEW_OUTPUT_DIRECTORY NEW_BUILD_ID');
 }
-if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(buildId)) throw new Error('Unsafe new build ID');
+if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(buildId)) throw new Error('Unsafe new build ID');
 const inside = (root, file) => file === root || file.startsWith(`${root}${path.sep}`);
 const sourceFile = await realpath(sourceArgument), sourceRoot = path.dirname(sourceFile);
 const candidateFile = await realpath(candidateArgument), candidateRoot = path.dirname(candidateFile);
@@ -25,12 +28,28 @@ assert.equal(source.schema_version, 'rna-explorer-1');
 assert.equal(source.molecule_type, 'RNA');
 assert.equal(source.partial, false, 'Repack requires a complete source release');
 assert.ok(source.build_id && source.build_id !== buildId, 'New immutable build identity');
-assert.equal(candidate.scalar_only, true);
+assert.ok((candidate.scalar_only === true) !== (candidate.family_only === true), 'Exactly one scalar_only or family_only candidate kind');
+const candidateKind = candidate.family_only === true ? 'family' : 'scalar';
+const candidateEncoding = candidateKind === 'family' ? BUNDLED_FAMILY_ENCODING : BUNDLED_SURVEY_ENCODING;
+assert.equal(candidate.schema_version, candidateKind === 'family' ? 'rna-family-bundled-candidate-1' : 'rna-survey-bundled-candidate-1', 'Candidate schema');
 assert.equal(candidate.build_id, source.build_id, 'Candidate source identity');
 assert.equal(candidate.source_manifest.sha256, sha256(sourceBytes), 'Candidate source manifest identity');
-assert.deepEqual(candidate.survey.terms, source.survey.terms, 'Unchanged term definitions');
-assert.deepEqual(candidate.survey.opening_bins, source.survey.opening_bins, 'Unchanged opening bins');
-assert.deepEqual(Object.keys(candidate.survey.scalars.terms).sort(), Object.keys(source.survey.scalars.terms).sort(), 'Complete scalar registry');
+const candidateFamilies = new Map();
+if (candidateKind === 'scalar') {
+  assert.deepEqual(candidate.survey.terms, source.survey.terms, 'Unchanged term definitions');
+  assert.deepEqual(candidate.survey.opening_bins, source.survey.opening_bins, 'Unchanged opening bins');
+  assert.deepEqual(Object.keys(candidate.survey.scalars.terms).sort(), Object.keys(source.survey.scalars.terms).sort(), 'Complete scalar registry');
+  assert.ok(candidate.survey.bundles && typeof candidate.survey.bundles === 'object' && !Array.isArray(candidate.survey.bundles), 'Scalar bundle registry');
+} else {
+  assert.ok(Array.isArray(candidate.families), 'Candidate families');
+  assert.equal(new Set(source.families.map(family => family.id)).size, source.families.length, 'Unique source family IDs');
+  for (const family of candidate.families) {
+    assert.ok(!candidateFamilies.has(family.id), 'Unique candidate family IDs');
+    candidateFamilies.set(family.id, family);
+  }
+  assert.deepEqual([...candidateFamilies.keys()].sort(), source.families.map(family => family.id).sort(), 'Complete family registry');
+  assert.ok(candidate.family_bundles && typeof candidate.family_bundles === 'object' && !Array.isArray(candidate.family_bundles), 'Family bundle registry');
+}
 
 const output = path.resolve(outputArgument), parent = path.dirname(output);
 const assets = await realpath(fileURLToPath(new URL('../../assets', import.meta.url)));
@@ -81,13 +100,40 @@ async function writeResource(descriptor, compressed, rawLength) {
   return { ...descriptor, bytes: compressed.length, uncompressed_bytes: rawLength, sha256: sha256(compressed) };
 }
 
-async function decode(data, root, bundles = {}) {
+async function expandedTransport(data, root, release) {
   if (data?.encoding === BUNDLED_SURVEY_ENCODING) {
-    data = await expandBundledSurveyColumns(data, async reference => {
-      assert.ok(Object.hasOwn(bundles, reference), 'Registered bundle reference');
-      return (await verifySurveyBundle(reference, (await readResource(root, bundles[reference])).data)).bundle;
+    return expandBundledSurveyColumns(data, async reference => {
+      const bundles = release.survey?.bundles ?? {};
+      assert.ok(Object.hasOwn(bundles, reference), 'Registered Survey bundle reference');
+      const descriptor = bundles[reference];
+      assert.equal(descriptor.path, `survey/bundles/${reference}.json.gz`, 'Canonical Survey bundle path');
+      assert.equal(descriptor.content_sha256, reference, 'Survey bundle content descriptor');
+      return (await verifySurveyBundle(reference, (await readResource(root, descriptor)).data)).bundle;
     });
   }
+  if (data?.encoding === BUNDLED_FAMILY_ENCODING) {
+    return expandBundledFamilyColumns(data, async reference => {
+      const bundles = release.family_bundles ?? {};
+      assert.ok(Object.hasOwn(bundles, reference), 'Registered family bundle reference');
+      const descriptor = bundles[reference];
+      assert.equal(descriptor.path, `families/bundles/${reference}.json.gz`, 'Canonical family bundle path');
+      assert.equal(descriptor.content_sha256, reference, 'Family bundle content descriptor');
+      return (await verifyFamilyBundle(reference, (await readResource(root, descriptor)).data)).bundle;
+    });
+  }
+  if (data?.encoding === SHARED_SURVEY_ENCODING) {
+    return expandSharedSurveyColumns(data, async reference => {
+      const columns = release.survey?.shared_columns ?? {};
+      assert.ok(Object.hasOwn(columns, reference), 'Registered shared Survey column');
+      assert.equal(columns[reference].path, `survey/columns/${reference}.json.gz`, 'Canonical shared column path');
+      return verifySharedColumn(reference, (await readResource(root, columns[reference])).data);
+    });
+  }
+  return data;
+}
+
+async function decode(data, root, release) {
+  data = await expandedTransport(data, root, release);
   if (data?.encoding === SURVEY_COLUMNAR_ENCODING) return decodeSurveyRows(data);
   if (data?.encoding === COORDINATE_COLUMNAR_ENCODING) return decodeCoordinateRows(data);
   if (data?.encoding === FAMILY_COLUMNAR_ENCODING) return decodeFamilyRows(data);
@@ -99,21 +145,38 @@ async function decode(data, root, bundles = {}) {
 const manifest = structuredClone(source);
 manifest.build_id = buildId;
 manifest.generated_at = new Date().toISOString();
-manifest.survey.bundles = {};
-// Bundle identities are independent of release ID; validate and copy exact bytes.
-for (const [reference, descriptor] of Object.entries(candidate.survey.bundles)) {
-  assert.equal(descriptor.path, `survey/bundles/${reference}.json.gz`, 'Canonical bundle path');
-  assert.equal(descriptor.content_sha256, reference, 'Bundle content descriptor');
-  const { compressed, raw, data } = await readResource(candidateRoot, descriptor);
-  await verifySurveyBundle(reference, data);
-  assert.equal(Object.keys(data.columns).length, descriptor.column_count, 'Bundle column count');
-  const destination = await writeResource(descriptor, compressed, raw.length);
-  const reread = await readResource(output, destination);
-  await verifySurveyBundle(reference, reread.data);
-  assert.deepEqual(reread.data, data, 'Complete bundle equality');
-  manifest.survey.bundles[reference] = destination;
-  resourceRecords.push({ path: destination.path, sha256: destination.sha256, bytes: destination.bytes,
-    uncompressed_bytes: destination.uncompressed_bytes, kind: 'bundle', unchanged_bytes: true });
+// Bundle identities are independent of release ID. Preserve the registries that
+// this candidate does not replace, including their exact authenticated bytes.
+async function copyBundles(registry, root, prefix, verify, kind) {
+  const destinations = {};
+  for (const [reference, descriptor] of Object.entries(registry ?? {})) {
+    assert.equal(descriptor.path, `${prefix}/${reference}.json.gz`, 'Canonical bundle path');
+    assert.equal(descriptor.content_sha256, reference, 'Bundle content descriptor');
+    const {compressed, raw, data} = await readResource(root, descriptor);
+    await verify(reference, data);
+    if (descriptor.column_count !== undefined) assert.equal(Object.keys(data.columns).length, descriptor.column_count, 'Bundle column count');
+    const destination = await writeResource(descriptor, compressed, raw.length);
+    const reread = await readResource(output, destination);
+    await verify(reference, reread.data);
+    assert.deepEqual(reread.data, data, 'Complete bundle equality');
+    destinations[reference] = destination;
+    resourceRecords.push({path: destination.path, sha256: destination.sha256, bytes: destination.bytes,
+      uncompressed_bytes: destination.uncompressed_bytes, kind, unchanged_bytes: true});
+  }
+  return destinations;
+}
+if (candidateKind === 'scalar' || source.survey.bundles !== undefined) {
+  manifest.survey.bundles = await copyBundles(candidateKind === 'scalar' ? candidate.survey.bundles : source.survey.bundles,
+    candidateKind === 'scalar' ? candidateRoot : sourceRoot, 'survey/bundles', verifySurveyBundle, 'survey_bundle');
+}
+if (candidateKind === 'family' || source.family_bundles !== undefined) {
+  manifest.family_bundles = await copyBundles(candidateKind === 'family' ? candidate.family_bundles : source.family_bundles,
+    candidateKind === 'family' ? candidateRoot : sourceRoot, 'families/bundles', verifyFamilyBundle, 'family_bundle');
+}
+if (candidateKind === 'scalar') delete manifest.survey.shared_columns;
+else if (source.survey.shared_columns !== undefined) {
+  manifest.survey.shared_columns = await copyBundles(source.survey.shared_columns, sourceRoot,
+    'survey/columns', verifySharedColumn, 'survey_shared_column');
 }
 
 let rewritten = 0, copied = 0, validatedRows = 0;
@@ -122,14 +185,13 @@ async function repack(descriptor, replacement = null) {
   if (original.data?.encoding) assert.equal(original.data.build_id, source.build_id, `Source build identity: ${descriptor.path}`);
   const input = replacement ? await readResource(candidateRoot, replacement) : original;
   if (replacement) {
-    assert.equal(input.data.encoding, BUNDLED_SURVEY_ENCODING);
-    assert.equal(input.data.build_id, source.build_id, 'Scalar candidate build identity');
-    assert.equal(replacement.row_count, descriptor.row_count, 'Scalar candidate descriptor row count');
-    const expanded = await expandBundledSurveyColumns(input.data, async reference => {
-      assert.ok(Object.hasOwn(manifest.survey.bundles, reference), 'Registered scalar bundle');
-      return (await verifySurveyBundle(reference, (await readResource(output, manifest.survey.bundles[reference])).data)).bundle;
-    });
-    assert.deepEqual(expanded, original.data, `All original scalar transport metadata and columns: ${descriptor.path}`);
+    assert.equal(input.data.encoding, candidateEncoding);
+    assert.equal(input.data.build_id, source.build_id, 'Candidate build identity');
+    const scientificDescriptor = item => Object.fromEntries(Object.entries(item).filter(([key]) => !['path', 'encoding', 'bytes', 'uncompressed_bytes', 'sha256'].includes(key)));
+    assert.deepEqual(scientificDescriptor(replacement), scientificDescriptor(descriptor), 'Unchanged candidate scientific descriptor');
+    const expanded = await expandedTransport(input.data, output, manifest);
+    const originalExpanded = await expandedTransport(original.data, sourceRoot, source);
+    assert.deepEqual(expanded, originalExpanded, `All original ${candidateKind} transport metadata and columns: ${descriptor.path}`);
   }
   let raw = input.raw, compressed = input.compressed;
   if (input.data && Object.hasOwn(input.data, 'build_id')) {
@@ -141,7 +203,7 @@ async function repack(descriptor, replacement = null) {
     assert.ok(!input.data?.encoding, 'Encoded assets require explicit build identity');
     copied++;
   }
-  const destination = await writeResource({ ...descriptor, ...(replacement ? { encoding: BUNDLED_SURVEY_ENCODING } : {}) }, compressed, raw.length);
+  const destination = await writeResource({ ...descriptor, ...(replacement ? { encoding: candidateEncoding } : {}) }, compressed, raw.length);
   const reread = await readResource(output, destination);
   if (reread.data?.encoding) assert.equal(reread.data.build_id, buildId, 'Destination build identity');
   if (input.data?.encoding) {
@@ -149,8 +211,8 @@ async function repack(descriptor, replacement = null) {
     const { build_id: newBuild, ...after } = reread.data;
     assert.deepEqual(after, before, `Transport metadata and columns: ${descriptor.path}`);
   } else assert.deepEqual(reread.data, original.data, `Unencoded asset equality: ${descriptor.path}`);
-  const expected = await decode(original.data, sourceRoot, source.survey.bundles);
-  const actual = await decode(reread.data, output, manifest.survey.bundles);
+  const expected = await decode(original.data, sourceRoot, source);
+  const actual = await decode(reread.data, output, manifest);
   assert.deepEqual(actual, expected, `Every decoded row and field: ${descriptor.path}`);
   const rows = Array.isArray(actual) ? actual.length : null;
   if (descriptor.row_count != null) assert.equal(rows, descriptor.row_count, `Decoded row count: ${descriptor.path}`);
@@ -164,10 +226,13 @@ async function repack(descriptor, replacement = null) {
 
 manifest.metadata = await repack(source.metadata);
 manifest.provenance.decisions = await repack(source.provenance.decisions);
-for (let index = 0; index < source.families.length; index++) manifest.families[index] = await repack(source.families[index]);
+for (let index = 0; index < source.families.length; index++) {
+  const descriptor = source.families[index];
+  manifest.families[index] = await repack(descriptor, candidateKind === 'family' ? candidateFamilies.get(descriptor.id) : null);
+}
 for (const [kind, descriptor] of Object.entries(source.relations)) manifest.relations[kind] = await repack(descriptor);
 for (const [term, descriptor] of Object.entries(source.survey.scalars.terms)) {
-  manifest.survey.scalars.terms[term] = await repack(descriptor, candidate.survey.scalars.terms[term]);
+  manifest.survey.scalars.terms[term] = await repack(descriptor, candidateKind === 'scalar' ? candidate.survey.scalars.terms[term] : null);
 }
 for (const [group, value] of Object.entries(source.survey.coordinates.groups)) {
   if (value.partitions) {
@@ -179,27 +244,25 @@ for (const [group, value] of Object.entries(source.survey.coordinates.groups)) {
 manifest.provenance.source_release = {
   build_id: source.build_id, manifest_sha256: sha256(sourceBytes),
   build_stages: source.provenance.build_stages ?? {},
+  ...(source.provenance.repack ? { repack: source.provenance.repack } : {}),
   ...(source.provenance.source_release ? { source_release: source.provenance.source_release } : {}),
 };
 delete manifest.provenance.build_stages;
 manifest.provenance.repack = {
-  operation: 'lossless_bundled_survey_transport', source_build_id: source.build_id,
-  source_manifest_sha256: sha256(sourceBytes), scalar_candidate_sha256: sha256(candidateBytes),
-  scalar_encoding: BUNDLED_SURVEY_ENCODING,
+  operation: candidateKind === 'family' ? 'lossless_bundled_family_transport' : 'lossless_bundled_survey_transport', source_build_id: source.build_id,
+  source_manifest_sha256: sha256(sourceBytes), [`${candidateKind}_candidate_sha256`]: sha256(candidateBytes),
+  [`${candidateKind}_encoding`]: candidateEncoding,
   code_sha256: Object.fromEntries(await Promise.all([
-    './repack_bundled_release.mjs', './output_scope.mjs', '../core/survey-codec.js', '../core/bundled-survey-codec.js',
+    './repack_bundled_release.mjs', './output_scope.mjs', './verify_release_inventory.mjs',
+    '../core/survey-codec.js', '../core/bundled-survey-codec.js', '../core/bundled-family-codec.js', '../core/shared-survey-codec.js',
   ].map(async file => [file, sha256(await readFile(new URL(file, import.meta.url)))]))),
   note: 'Storage transformation only. Scientific rows and source selection are unchanged; source stage history is retained separately.',
 };
 await scope.json(path.join(output, 'manifest.json'), manifest);
 
-function descriptorsIn(value, result = []) {
-  if (!value || typeof value !== 'object') return result;
-  if (typeof value.path === 'string') result.push(value);
-  for (const item of Object.values(value)) if (item && typeof item === 'object') descriptorsIn(item, result);
-  return result;
-}
-const referenced = descriptorsIn(manifest);
+// Historical provenance may itself contain paths. Only current release resource
+// descriptors belong to the inventory.
+const referenced = releaseDescriptors(manifest);
 assert.equal(new Set(referenced.map(item => item.path)).size, referenced.length, 'Unique manifest resource references');
 assert.deepEqual(referenced.map(item => item.path).sort(), [...seenPaths].sort(), 'Complete manifest resource references');
 const actualFiles = [];
@@ -226,10 +289,13 @@ const inventory = {
 const report = {
   schema_version: 'rna-release-repack-validation-1', started_at: startedAt, completed_at: new Date().toISOString(),
   source_manifest: { path: sourceFile, sha256: sha256(sourceBytes), build_id: source.build_id },
-  scalar_candidate: { path: candidateFile, sha256: sha256(candidateBytes) },
+  candidate_kind: candidateKind, [`${candidateKind}_candidate`]: { path: candidateFile, sha256: sha256(candidateBytes) },
   output_directory: output, build_id: buildId, partial: false,
   resource_count: referenced.length, file_count: actualFiles.length, bytes: inventory.bytes,
-  rewritten_build_assets: rewritten, copied_unencoded_assets: copied, bundle_count: Object.keys(manifest.survey.bundles).length,
+  rewritten_build_assets: rewritten, copied_unencoded_assets: copied,
+  bundle_count: Object.keys(manifest.survey.bundles ?? {}).length + Object.keys(manifest.family_bundles ?? {}).length,
+  survey_bundle_count: Object.keys(manifest.survey.bundles ?? {}).length,
+  family_bundle_count: Object.keys(manifest.family_bundles ?? {}).length,
   validated_rows: validatedRows, all_decoded_equal: true, exact_inventory: true,
   manifest_sha256: inventory.manifest_sha256,
   limitation: 'Storage and full decoded equality validated. Run validateRelease on this staged manifest and browser acceptance separately. No published assets or activation pointer were modified.',

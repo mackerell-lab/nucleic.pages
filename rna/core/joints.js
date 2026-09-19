@@ -13,6 +13,7 @@ export function join(leftInput, rightInput, relationSpec = { type: 'identity' })
   const rightRows = Array.isArray(rightInput) ? rightInput : rightInput.rows || [];
   if (leftInput.build_id && rightInput.build_id && leftInput.build_id !== rightInput.build_id) throw new Error('Cannot join different RNA builds');
   const left = uniqueIndex(leftRows, 'left'), right = uniqueIndex(rightRows, 'right');
+  const identityJoin = !relationSpec.type || ['identity', 'same_level', 'same_residue'].includes(relationSpec.type);
   const points = [], pairs = new Set(), residues = new Set(), seen = new Set();
   let missingReferences = 0;
   function emit(leftId, rightId, relation = {}) {
@@ -20,7 +21,9 @@ export function join(leftInput, rightInput, relationSpec = { type: 'identity' })
     if (!a || !b) { missingReferences++; return; }
     if (a.row.build_id && b.row.build_id && a.row.build_id !== b.row.build_id) throw new Error('Cannot join different RNA builds');
     const role = relation.endpoint_role || relation.role || ({ 1: 'first', 2: 'second' }[relation.side]) || (relation.side ? String(relation.side) : null);
-    if (relationSpec.endpoint && relationSpec.endpoint !== 'both' && role !== relationSpec.endpoint) return;
+    // Endpoint preference belongs to explicit relations. It can remain stored
+    // while the UI displays an identity join, whose observations have no side.
+    if (!identityJoin && relationSpec.endpoint && relationSpec.endpoint !== 'both' && role !== relationSpec.endpoint) return;
     const key = JSON.stringify([leftId, rightId, role]);
     if (seen.has(key)) return;
     seen.add(key);
@@ -31,7 +34,7 @@ export function join(leftInput, rightInput, relationSpec = { type: 'identity' })
     if (relation.pair_id) pairs.add(relation.pair_id);
     if (relation.residue_id) residues.add(relation.residue_id);
   }
-  if (!relationSpec.type || ['identity', 'same_level', 'same_residue'].includes(relationSpec.type)) {
+  if (identityJoin) {
     for (const id of left.keys()) if (right.has(id)) emit(id, id);
   } else {
     const relations = Array.isArray(relationSpec.relations) ? relationSpec.relations : relationSpec.relations?.rows;
@@ -56,7 +59,7 @@ export function join(leftInput, rightInput, relationSpec = { type: 'identity' })
     }
     for (const point of points) { point.weight = 1 / multiplicities.get(point.pair_id); point.weighting = 'pair_equal'; }
   }
-  return { points, joinSpec: { type: relationSpec.type || 'identity', endpoint: relationSpec.endpoint || 'both', weighting: relationSpec.weighting || 'incidence_equal' },
+  return { points, joinSpec: { type: relationSpec.type || 'identity', endpoint: identityJoin ? 'both' : relationSpec.endpoint || 'both', weighting: relationSpec.weighting || 'incidence_equal' },
     diagnostics: { emittedIncidences: points.length, uniqueLeft: new Set(points.map(point => point.left_id)).size,
       uniqueRight: new Set(points.map(point => point.right_id)).size, uniquePairs: pairs.size,
       uniqueResidues: residues.size, missingReferences } };

@@ -1,5 +1,6 @@
 import { wrapCircular } from '../math/numeric.js';
 import { RNA_CONTROL_HELP } from '../config/control-help.js';
+import { plotAxisSpec } from '../core/axis-layout.js';
 
 const COLORS = ['#174a7e', '#8c3b2a', '#146c43', '#8659a1', '#be882e', '#32898c', '#ae567e', '#6a6256'];
 export const entryId = row => String(row.accession ?? row.pdb_id ?? row.pdb ?? row.entry_id ?? row.id ?? '').toUpperCase();
@@ -119,6 +120,27 @@ export function plotLayout(parameter, normalization = 'probability', extra = {})
     legend: { orientation: 'h', y: 1.13 }, hovermode: 'closest', ...extra,
   };
 }
+/** Use the analysis range so periodic axes show a complete, labelled cycle. */
+export function distributionLayout(result, normalization = 'probability', extra = {}, compact = false) {
+  const layout = plotLayout(result.parameter, normalization, extra);
+  layout.xaxis = { ...layout.xaxis, ...plotAxisSpec(result.parameter, result.range,
+    { circularMode: result.displaySpec?.circularMode, compact }) };
+  return layout;
+}
+
+export function jointLayout(result, normalization = 'probability', extra = {}) {
+  const yParameter = result.yParameter;
+  const layout = plotLayout(result.xParameter, normalization, {
+    height: 530, ...extra,
+    yaxis: { title: `${yParameter.label ?? yParameter.id}${yParameter.unit ? ` (${yParameter.unit})` : ''}`, ...extra.yaxis },
+  });
+  for (const [axis, parameter, range] of [['x', result.xParameter, result.xRange], ['y', yParameter, result.yRange]]) {
+    layout[`${axis}axis`] = { ...layout[`${axis}axis`], ...plotAxisSpec(parameter, range,
+      { circularMode: result.displaySpec?.[axis]?.circularMode ?? result.displaySpec?.circularMode }) };
+  }
+  return layout;
+}
+
 export function distributionTraces(result, display = {}) {
   const parameter = result.parameter ?? {};
   const escape = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');

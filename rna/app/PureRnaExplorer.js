@@ -9,7 +9,7 @@ import { jointAnalysisKey } from '../core/joint-analysis-key.js';
 import { rankSurveyContexts, orderSurveyRanks, surveyContext } from '../core/survey-ranking.js';
 import { CoordinateSummary } from '../core/coordinates.js';
 import { csv, createPlotSnapshot, provenance, restyleJointSnapshot, restyleTraceSnapshot } from '../core/export.js';
-import { cards, control, distributionTraces, download, element, entryId, labels, number, options, plotLayout, stats, summaryCards, tableRows } from '../views/panels.js';
+import { cards, control, distributionLayout, distributionTraces, download, element, entryId, jointLayout, labels, number, options, stats, summaryCards, tableRows } from '../views/panels.js';
 import { annotationLabel } from '../views/labels.js';
 import { JOINT_PALETTE_OPTIONS, jointColorscale } from '../views/palettes.js';
 import { wrapCircular } from '../math/numeric.js';
@@ -323,7 +323,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         for (const [key, id] of [['distribution', 'plot'], ['survey', 'baseGeometryPlot']]) {
           const snapshot = updated[key]; if (!snapshot) continue;
           await this.plot(this.$(id), distributionTraces(snapshot.result, snapshot.display_spec),
-            plotLayout(snapshot.result.parameter, snapshot.display_spec.normalization));
+            distributionLayout(snapshot.result, snapshot.display_spec.normalization));
           if (!this.current(request.revision)) return;
         }
         // A label choice during Plotly work must finish before reporting ready.
@@ -356,7 +356,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const result = this.decorate(distribution(selection.rows, parameter, display));
     const snapshot = this.snapshot({ result, selectionSpec: state.selection, displaySpec: display, buildId: this.manifest.build_id, parameter, familyId: state.familyId, revision });
     await this.commit(revision, async () => {
-      await this.plot(this.$('plot'), distributionTraces(result, display), plotLayout(parameter, display.normalization));
+      await this.plot(this.$('plot'), distributionTraces(result, display), distributionLayout(result, display.normalization));
       if (!this.current(revision)) return;
       this.snapshots.distribution = snapshot;
       const finiteRows = (result.series ?? []).flatMap(series => series.rows ?? []);
@@ -465,7 +465,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         if (this.state.familyId !== state.familyId || !this.parameter(state.familyId, parameter.id)) return;
         this.state.parameterId = parameter.id; this.updateSelectors(); this.requestRender();
       });
-      await this.plot(plot, distributionTraces(result, { traceStyle: 'line' }), plotLayout(parameter, state.display.normalization, { height: 150, margin: { l: 30, r: 8, t: 4, b: 30 }, showlegend: false, xaxis: { title: '', tickfont: { size: 10 } }, yaxis: { title: '', tickfont: { size: 10 } } }));
+      await this.plot(plot, distributionTraces(result, { traceStyle: 'line' }), distributionLayout(result, state.display.normalization, { height: 150, margin: { l: 30, r: 8, t: 4, b: 30 }, showlegend: false, xaxis: { title: '', tickfont: { size: 10 } }, yaxis: { title: '', tickfont: { size: 10 } } }, true));
     }
     if (this.current(revision)) this.overviewKey = key;
   }
@@ -538,7 +538,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       const contourConfig = jointContourConfig(zmin, zmax, state.joint);
       const contour = { ...common, type: 'contour', ...contourConfig, contours: { ...contourConfig.contours, coloring: state.joint.type === 'filled_contour' ? 'heatmap' : 'none' }, showscale: state.joint.type !== 'heatmap_contour' };
       const traces = state.joint.type === 'heatmap' ? [{ ...common, type: 'heatmap' }] : state.joint.type === 'heatmap_contour' ? [{ ...common, type: 'heatmap' }, contour] : [contour];
-      await this.plot(this.$('jointPlot'), traces, plotLayout(xParameter, state.display.normalization, { yaxis: { title: `${yParameter.label ?? yParameter.id}${yParameter.unit ? ` (${yParameter.unit})` : ''}` }, height: 530 }));
+      await this.plot(this.$('jointPlot'), traces, jointLayout(result, state.display.normalization));
       if (!this.current(revision)) return;
       this.snapshots.joint = snapshot;
       this.completedJointKey = analysisKey;
@@ -624,7 +624,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const result = this.decorate(distribution(termRows, parameter, display));
     const snapshot = this.snapshot({ result, selectionSpec: { ...state.selection, contexts: state.survey.contexts ?? [] }, buildId: this.manifest.build_id, displaySpec: display, provenance: { survey_term: term.id, survey_contexts: state.survey.contexts ?? [], opening_conditioning: state.survey.opening, opening_bins: this.manifest.survey.opening_bins, incidence_policy: state.survey.opening === 'bins' ? 'one row per explicit residue-pair incidence' : 'one row per residue or pair observable' } });
     await this.commit(revision, async () => {
-      await this.plot(this.$('baseGeometryPlot'), distributionTraces(result, state.display), plotLayout(parameter, state.display.normalization));
+      await this.plot(this.$('baseGeometryPlot'), distributionTraces(result, state.display), distributionLayout(result, state.display.normalization));
       if (!this.current(revision)) return;
       this.snapshots.survey = snapshot;
       options(this.$('surveyGroupSelect'), [{ id: 'all', label: 'All groups' }, ...groups.map(id => ({ id, label: annotationLabel(id) }))], state.survey.group);

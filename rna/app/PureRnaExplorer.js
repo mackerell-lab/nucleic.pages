@@ -11,6 +11,7 @@ import { cards, control, distributionTraces, download, element, entryId, labels,
 import { annotationLabel } from '../views/labels.js';
 import { JOINT_PALETTE_OPTIONS, jointColorscale } from '../views/palettes.js';
 import { wrapCircular } from '../math/numeric.js';
+import { coordinateLayout } from '../views/coordinate-layout.js';
 
 const choices = pairs => pairs.map(([id, label]) => ({ id, label }));
 const rowsOf = table => Array.isArray(table) ? table : table?.rows ?? [];
@@ -641,7 +642,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const contexts = [...contextSet].sort();
     const averages = accumulator.results();
     await this.commit(revision, async () => {
-      await this.plot(this.$('coordinatePlot'), [{ type: 'scatter3d', mode: 'markers+text', x: averages.map(row => row.mean[0]), y: averages.map(row => row.mean[1]), z: averages.map(row => row.mean[2]), text: averages.map(row => row.atom), marker: { size: 5, color: '#174a7e' }, textposition: 'top center' }], { paper_bgcolor: 'rgba(0,0,0,0)', margin: { t: 10, b: 0, l: 0, r: 0 }, scene: { aspectmode: 'data', xaxis: { title: 'x (Å)' }, yaxis: { title: 'y (Å)' }, zaxis: { title: 'z (Å)' } } });
+      await this.plot(this.$('coordinatePlot'), [{ type: 'scatter3d', mode: 'markers+text', x: averages.map(row => row.mean[0]), y: averages.map(row => row.mean[1]), z: averages.map(row => row.mean[2]), text: averages.map(row => row.atom), marker: { size: 5, color: '#174a7e' }, textposition: 'top center' }], coordinateLayout(averages));
       if (!this.current(revision)) return;
       options(this.$('coordinateGroupSelect'), groupChoices.map(id => ({ id, label: id.replace('cytosine_standard_pair', 'Cytosine standard pair frame').replace('rna_standard_base', 'RNA standard base frame').replaceAll('_', ' ') })), group);
       this.state.survey.coordinateGroup = group;

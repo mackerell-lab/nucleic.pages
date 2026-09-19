@@ -4,6 +4,7 @@ import { BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle
 import { BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle } from './bundled-family-codec.js';
 import { PACKED_COORDINATE_ENCODING, expandPackedCoordinates } from './packed-coordinate-codec.js';
 import { PACKED_FAMILY_ENCODING, expandPackedFamily } from './packed-family-codec.js';
+import { PACKED_SURVEY_ENCODING, expandPackedSurvey } from './packed-survey-codec.js';
 
 /** A session pins one immutable RNA release; rejected requests can be retried. */
 const immutableData = new WeakSet();
@@ -167,6 +168,11 @@ export class RnaDataRepository {
       if (!descriptor?.path) throw new Error(`RNA survey partition is unavailable: ${kind}/${partition}`);
       let data = await this.readJson(new URL(descriptor.path, this.releaseUrl).href);
       if (data.build_id && data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA survey: ${kind}`);
+      if (kind === 'scalars' && (data.encoding === PACKED_SURVEY_ENCODING || descriptor.encoding === PACKED_SURVEY_ENCODING)) {
+        if (descriptor.encoding !== data.encoding) throw new Error('RNA Survey encoding mismatch');
+        if (data.build_id !== manifest.build_id) throw new Error('Cross-build RNA Survey scalar');
+        data = await expandPackedSurvey(data, reference => this.loadSurveyBundle(reference));
+      }
       if (kind === 'scalars' && data.encoding === BUNDLED_SURVEY_ENCODING) {
         data = await expandBundledSurveyColumns(data, reference => this.loadSurveyBundle(reference));
       }

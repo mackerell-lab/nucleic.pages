@@ -1,5 +1,6 @@
-/** Real-release end-to-end validation. No network mocks or synthetic datasets. */
+/** Real-release end-to-end validation, with optional authenticated candidate routing. */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -7,6 +8,7 @@ import { downloadCsv, waitReady, numericText } from './helpers.mjs';
 import { checkPairControls, checkPuckerSurvey, checkBroadResidueScope, checkPalettes } from './rna-specific-controls.mjs';
 import { configureSurveyCandidate } from './candidate-routing.mjs';
 import { configureReleaseCandidate } from './release-routing.mjs';
+import { configurePackedSurveyCandidate } from './packed-survey-candidate-routing.mjs';
 
 const workspace = path.resolve(process.env.RNA_WORKSPACE || process.cwd());
 const output = path.resolve(process.env.RNA_BROWSER_OUTPUT || path.join(workspace, 'data/pure_rna/browser_validation'));
@@ -15,6 +17,7 @@ const { chromium } = await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE ||
 const report = { startedAt: new Date().toISOString(), url: process.env.RNA_URL || 'http://127.0.0.1:8767/nucleic.pages/rna/', checks: [], pageErrors: [], consoleErrors: [], failedRequests: [], responses: [] };
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
+const packedModuleResponses = [];
 await page.addInitScript(() => {
   performance.setResourceTimingBufferSize(10000);
   globalThis.rnaBrowserLongTasks = { count: 0, totalMs: 0, maximumMs: 0 };
@@ -28,6 +31,12 @@ page.on('pageerror', error => { report.pageErrors.push(error.message); console.e
 page.on('console', message => { if (message.type() === 'error') { report.consoleErrors.push(message.text()); console.error(`CONSOLE ERROR ${message.text()}`); } });
 page.on('requestfailed', request => report.failedRequests.push({ url: request.url(), error: request.failure()?.errorText }));
 page.on('response', response => report.responses.push({ url: response.url(), status: response.status() }));
+page.on('response', response => {
+  if (process.env.RNA_PACKED_SURVEY_CANDIDATE_URL && /\/rna\/core\/[^/]+\.js$/.test(response.url())) {
+    packedModuleResponses.push(response.body().then(bytes => ({ url: response.url(),
+      sha256: createHash('sha256').update(bytes).digest('hex') })));
+  }
+});
 const record = (name, evidence) => { report.checks.push({ name, passed: true, elapsedMs: Date.now() - Date.parse(report.startedAt), evidence }); console.log(`PASS ${name}`); };
 
 async function snapshot(kind = 'distribution') {
@@ -74,9 +83,17 @@ async function verifyDistribution(name, button = '#filteredCsvDownload', kind = 
 }
 
 try {
-  if (process.env.RNA_RELEASE_CANDIDATE_URL && process.env.RNA_SURVEY_CANDIDATE_URL) throw new Error('Choose a full release or scalar candidate, not both');
+  if ([process.env.RNA_RELEASE_CANDIDATE_URL, process.env.RNA_SURVEY_CANDIDATE_URL,
+    process.env.RNA_PACKED_SURVEY_CANDIDATE_URL].filter(Boolean).length > 1) throw new Error('Choose only one release, scalar, or packed scalar candidate mode');
   if (process.env.RNA_RELEASE_CANDIDATE_URL) report.releaseCandidate = await configureReleaseCandidate(page, process.env.RNA_RELEASE_CANDIDATE_URL);
   if (process.env.RNA_SURVEY_CANDIDATE_URL) report.surveyCandidate = await configureSurveyCandidate(page, process.env.RNA_SURVEY_CANDIDATE_URL);
+  if (process.env.RNA_PACKED_SURVEY_CANDIDATE_URL) {
+    const sourceRelative = 'nucleic.pages/assets/pure_rna/releases/full_packed_family_20260919/manifest.json';
+    report.packedSurveyCandidate = await configurePackedSurveyCandidate(page, process.env.RNA_PACKED_SURVEY_CANDIDATE_URL, {
+      sourceManifestUrl: new URL(`/${sourceRelative}`, report.url).href,
+      sourceManifestPath: path.join(workspace, sourceRelative),
+    });
+  }
   const navigationStarted = Date.now();
   await page.goto(report.url, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await waitReady(page);
@@ -86,6 +103,15 @@ try {
   if (report.releaseCandidate) {
     assert.equal(release.build_id, report.releaseCandidate.buildId, 'Explorer did not select the staged release');
     assert.equal(await page.evaluate(() => window.rnaExplorer.repository.releaseUrl), report.releaseCandidate.candidateUrl);
+  }
+  if (report.packedSurveyCandidate) {
+    const routing = report.packedSurveyCandidate, candidateRoot = new URL('.', routing.candidateUrl).href;
+    assert.equal(release.build_id, routing.sourceBuildId, 'Explorer did not select the packed scalar source build');
+    assert.equal(await page.evaluate(() => window.rnaExplorer.repository.releaseUrl), routing.sourceManifestUrl);
+    assert.equal(Object.keys(release.survey.scalars.terms).length, routing.termCount);
+    assert(Object.values(release.survey.scalars.terms).every(term => term.encoding === 'rna-survey-float64-1'
+      && term.path.startsWith(candidateRoot)), 'Explorer did not select all packed scalar descriptors');
+    assert(release.families.every(family => !/^https?:/.test(family.path)), 'Scalar-only candidate changed family paths');
   }
   report.release = { buildId: release.build_id, partial: release.partial === true, counts: release.counts, capabilities: release.capabilities };
   assert(!release.partial || process.env.RNA_ALLOW_PARTIAL === '1', 'Partial releases require RNA_ALLOW_PARTIAL=1 and establish integration evidence only');
@@ -269,12 +295,27 @@ try {
   assert.deepEqual(report.failedRequests, [], 'Failed network requests');
   assert(report.responses.every(response => response.status < 400), 'HTTP error responses');
   if (report.releaseCandidate) assert(!report.responses.some(response => /\/assets\/pure_rna\/releases\//.test(response.url)), 'Staged release test fetched published release resources');
+  if (report.packedSurveyCandidate) {
+    const routing = report.packedSurveyCandidate, candidateRoot = new URL('.', routing.candidateUrl).href;
+    const scalarRequests = report.responses.filter(response => response.url.startsWith(candidateRoot)
+      && response.url.includes('/survey/scalars/'));
+    assert(scalarRequests.length > 0, 'Packed scalar UI sweep never fetched candidate payloads');
+    assert(!report.responses.some(response => /\/assets\/pure_rna\/releases\/[^/]+\/survey\/scalars\//.test(response.url)),
+      'Packed scalar UI sweep fell back to original scalar payloads');
+    assert(report.responses.some(response => response.url.startsWith(new URL('.', routing.sourceManifestUrl).href)
+      && response.url.includes('/survey/coordinates/')), 'Mixed candidate sweep did not load original coordinates');
+    report.packedSurveyIntegration = { scalarRequests: scalarRequests.length,
+      uniqueScalarRequests: new Set(scalarRequests.map(response => response.url)).size,
+      noOriginalScalarFallback: true, originalFamiliesAndCoordinates: true,
+      limitation: 'Mixed scalar candidate and original installed release integration; not an immutable release activation gate.' };
+  }
   report.passed = true;
 } catch (error) {
   report.passed = false; report.failure = { message: error.message, stack: error.stack };
   await page.screenshot({ path: path.join(output, 'rna-failure.png'), fullPage: true }).catch(() => {});
   throw error;
 } finally {
+  if (process.env.RNA_PACKED_SURVEY_CANDIDATE_URL) report.packedModuleResponses = await Promise.all(packedModuleResponses);
   report.finishedAt = new Date().toISOString();
   await writeFile(path.join(output, 'rna-live-browser.json'), JSON.stringify(report, null, 2) + '\n');
   await browser.close();

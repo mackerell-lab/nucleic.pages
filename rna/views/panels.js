@@ -102,11 +102,19 @@ export function plotLayout(parameter, normalization = 'probability', extra = {})
   };
 }
 export function distributionTraces(result, display = {}) {
+  const parameter = result.parameter ?? {};
+  const escape = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  const label = escape(`${parameter.label ?? parameter.id ?? 'Value'}${parameter.unit ? ` (${parameter.unit})` : ''}`);
+  // Miniature plots supply only trace style; the computed result owns its scale.
+  const normalization = result.displaySpec?.normalization ?? display.normalization;
+  const intensity = normalization === 'density' ? 'Probability density (smoothed)' : 'Probability (smoothed)';
+  const periodic = Number.isFinite(parameter.period) && parameter.period > 0;
   return (result.series ?? []).map((series, index) => ({
     type: 'scatter', mode: 'lines', name: `${series.label ?? series.key} (n=${number(series.values?.length ?? series.rows?.length ?? series.statistics?.n ?? 0)})`,
     x: Array.from(series.x ?? []), y: Array.from(series.y ?? []), line: { color: COLORS[index % COLORS.length], width: 2.4 },
     fill: display.traceStyle === 'line' ? 'none' : 'tozeroy', fillcolor: `${COLORS[index % COLORS.length]}18`,
-    hovertemplate: '%{x:.3f}<br>%{y:.5f}<extra>%{fullData.name}</extra>',
+    ...(periodic ? { customdata: Array.from(series.x ?? [], value => [value, wrapCircular(value, parameter.period)]) } : {}),
+    hovertemplate: `${label}<br>${periodic ? 'View %{customdata[0]:.3f}<br>Angle %{customdata[1]:.3f}' : '%{x:.3f}'}<br>${intensity} %{y:.4g}<extra>%{fullData.name}</extra>`,
   }));
 }
 export function summaryCards(parent, result) {

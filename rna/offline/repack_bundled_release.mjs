@@ -14,6 +14,7 @@ import { BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle
 import { SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn } from '../core/shared-survey-codec.js';
 import { PACKED_COORDINATE_ENCODING, expandPackedCoordinates } from '../core/packed-coordinate-codec.js';
 import { PACKED_FAMILY_ENCODING, expandPackedFamily } from '../core/packed-family-codec.js';
+import { PACKED_SURVEY_ENCODING, expandPackedSurvey } from '../core/packed-survey-codec.js';
 import { releaseDescriptors } from './verify_release_inventory.mjs';
 
 const [sourceArgument, candidateArgument, outputArgument, buildId, ...extra] = process.argv.slice(2);
@@ -30,11 +31,13 @@ assert.equal(source.schema_version, 'rna-explorer-1');
 assert.equal(source.molecule_type, 'RNA');
 assert.equal(source.partial, false, 'Repack requires a complete source release');
 assert.ok(source.build_id && source.build_id !== buildId, 'New immutable build identity');
-const candidateKinds = ['scalar', 'family', 'coordinate'].filter(kind => candidate[`${kind}_only`] === true);
-assert.equal(candidateKinds.length, 1, 'Exactly one scalar_only, family_only, or coordinate_only candidate kind');
-const candidateKind = candidateKinds[0];
+const candidateKinds = ['scalar', 'survey', 'family', 'coordinate'].filter(kind => candidate[`${kind}_only`] === true);
+assert.equal(candidateKinds.length, 1, 'Exactly one scalar_only, survey_only, family_only, or coordinate_only candidate kind');
+const candidateKind = candidateKinds[0] === 'survey' ? 'scalar' : candidateKinds[0];
+if (candidateKinds[0] === 'survey') assert.equal(candidate.schema_version, 'rna-survey-packed-candidate-1', 'Packed Survey candidate scope');
+if (candidate.schema_version === 'rna-survey-packed-candidate-1') assert.equal(candidateKinds[0], 'survey', 'Packed Survey candidate scope');
 const candidateSchemas = {family: {'rna-family-bundled-candidate-1': BUNDLED_FAMILY_ENCODING, 'rna-family-packed-candidate-1': PACKED_FAMILY_ENCODING},
-  scalar: {'rna-survey-bundled-candidate-1': BUNDLED_SURVEY_ENCODING}, coordinate: {'rna-coordinate-packed-candidate-1': PACKED_COORDINATE_ENCODING}};
+  scalar: {'rna-survey-bundled-candidate-1': BUNDLED_SURVEY_ENCODING, 'rna-survey-packed-candidate-1': PACKED_SURVEY_ENCODING}, coordinate: {'rna-coordinate-packed-candidate-1': PACKED_COORDINATE_ENCODING}};
 assert.ok(Object.hasOwn(candidateSchemas[candidateKind], candidate.schema_version), 'Candidate schema');
 const candidateEncoding = candidateSchemas[candidateKind][candidate.schema_version];
 assert.equal(candidate.build_id, source.build_id, 'Candidate source identity');
@@ -47,6 +50,15 @@ if (candidateKind === 'scalar') {
   assert.deepEqual(candidate.survey.opening_bins, source.survey.opening_bins, 'Unchanged opening bins');
   assert.deepEqual(Object.keys(candidate.survey.scalars.terms).sort(), Object.keys(source.survey.scalars.terms).sort(), 'Complete scalar registry');
   assert.ok(candidate.survey.bundles && typeof candidate.survey.bundles === 'object' && !Array.isArray(candidate.survey.bundles), 'Scalar bundle registry');
+  if (candidateEncoding === PACKED_SURVEY_ENCODING) {
+    assert.deepEqual(without(candidate.survey, ['scalars']), without(source.survey, ['scalars']), 'Unchanged packed Survey metadata and bundles');
+    assert.deepEqual(without(candidate.survey.scalars, ['terms']), without(source.survey.scalars, ['terms']), 'Unchanged packed Survey scalar metadata');
+    for (const [term, descriptor] of Object.entries(source.survey.scalars.terms)) {
+      const replacement = candidate.survey.scalars.terms[term];
+      assert.equal(replacement.path, descriptor.path, 'Unchanged packed Survey scalar path');
+      assert.deepEqual(scientificDescriptor(replacement), scientificDescriptor(descriptor), 'Unchanged packed Survey scientific descriptor');
+    }
+  }
 } else if (candidateKind === 'family') {
   assert.ok(Array.isArray(candidate.families), 'Candidate families');
   assert.equal(new Set(source.families.map(family => family.id)).size, source.families.length, 'Unique source family IDs');
@@ -130,8 +142,9 @@ async function writeResource(descriptor, compressed, rawLength) {
 async function expandedTransport(data, root, release) {
   if (data?.encoding === PACKED_FAMILY_ENCODING) data = expandPackedFamily(data);
   if (data?.encoding === PACKED_COORDINATE_ENCODING) return expandPackedCoordinates(data);
-  if (data?.encoding === BUNDLED_SURVEY_ENCODING) {
-    return expandBundledSurveyColumns(data, async reference => {
+  if ([BUNDLED_SURVEY_ENCODING, PACKED_SURVEY_ENCODING].includes(data?.encoding)) {
+    const expand = data.encoding === PACKED_SURVEY_ENCODING ? expandPackedSurvey : expandBundledSurveyColumns;
+    return expand(data, async reference => {
       const bundles = release.survey?.bundles ?? {};
       assert.ok(Object.hasOwn(bundles, reference), 'Registered Survey bundle reference');
       const descriptor = bundles[reference];
@@ -280,15 +293,18 @@ manifest.provenance.source_release = {
 delete manifest.provenance.build_stages;
 manifest.provenance.repack = {
   operation: candidateEncoding === PACKED_FAMILY_ENCODING ? 'lossless_packed_family_transport'
+    : candidateEncoding === PACKED_SURVEY_ENCODING ? 'lossless_packed_survey_transport'
     : {family: 'lossless_bundled_family_transport', scalar: 'lossless_bundled_survey_transport', coordinate: 'lossless_packed_coordinate_transport'}[candidateKind], source_build_id: source.build_id,
   source_manifest_sha256: sha256(sourceBytes), [`${candidateKind}_candidate_sha256`]: sha256(candidateBytes),
   [`${candidateKind}_encoding`]: candidateEncoding,
   code_sha256: Object.fromEntries(await Promise.all([
     './repack_bundled_release.mjs', './output_scope.mjs', './verify_release_inventory.mjs',
-    '../core/survey-codec.js', '../core/bundled-survey-codec.js', '../core/bundled-family-codec.js', '../core/shared-survey-codec.js', '../core/packed-coordinate-codec.js', '../core/packed-family-codec.js',
+    '../core/survey-codec.js', '../core/bundled-survey-codec.js', '../core/bundled-family-codec.js', '../core/shared-survey-codec.js', '../core/packed-coordinate-codec.js', '../core/packed-family-codec.js', '../core/packed-survey-codec.js',
   ].map(async file => [file, sha256(await readFile(new URL(file, import.meta.url)))]))),
   note: 'Storage transformation only. Scientific rows and source selection are unchanged; source stage history is retained separately.',
 };
+assert.ok((await readFile(sourceFile)).equals(sourceBytes), 'Source manifest remained stable during repack');
+assert.ok((await readFile(candidateFile)).equals(candidateBytes), 'Candidate index remained stable during repack');
 await scope.json(path.join(output, 'manifest.json'), manifest);
 
 // Historical provenance may itself contain paths. Only current release resource

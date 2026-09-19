@@ -18,6 +18,21 @@ export function options(select, items, selected) {
   select.replaceChildren(...items.map(item => element('option', { value: item.id }, item.label ?? item.id)));
   if (items.some(item => item.id === selected)) select.value = selected;
 }
+function helpDisclosure(title, help) {
+  const details = element('details', { className: 'rna-control-help' });
+  details.append(element('summary', { 'aria-label': `${title} help` }, 'Help'), element('p', {}, help));
+  return details;
+}
+export function mountStaticControlHelp(root) {
+  for (const cluster of root.querySelectorAll('[data-rna-control-help]')) {
+    const help = RNA_CONTROL_HELP[cluster.dataset.rnaControlHelp];
+    const label = cluster.querySelector('label');
+    if (!help || !label || cluster.querySelector('.rna-control-help')) continue;
+    const title = [...label.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join('').trim();
+    // Keep disclosures outside labels so opening help never activates a select.
+    cluster.append(helpDisclosure(title, help));
+  }
+}
 export function control(parent, { id, title, choices, selected, multi = false, help, onChange, select = false, allLabel = null }) {
   help = RNA_CONTROL_HELP[id] ?? help;
   const cluster = element('div', { className: 'filter-cluster' });
@@ -52,11 +67,7 @@ export function control(parent, { id, title, choices, selected, multi = false, h
     }
     cluster.append(group);
   }
-  if (help) {
-    const details = element('details', { className: 'rna-control-help' });
-    details.append(element('summary', { 'aria-label': `${title} help` }, 'Help'), element('p', {}, help));
-    cluster.append(details);
-  }
+  if (help) cluster.append(helpDisclosure(title, help));
   parent.append(cluster);
   return cluster;
 }

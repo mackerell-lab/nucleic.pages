@@ -44,7 +44,7 @@
           </section>
         </div>
         <div class="collapse-actions filter-actions"><button type="button" id="resetFilters" class="toggle-btn">Reset RNA filters</button></div>
-        <div class="controls"><label>Family<select id="familySelect"></select></label><label>Parameter<select id="parameterSelect"></select></label></div>
+        <div class="controls"><div class="filter-cluster" data-rna-control-help="familySelect"><label>Family<select id="familySelect"></select></label></div><div class="filter-cluster" data-rna-control-help="parameterSelect"><label>Parameter<select id="parameterSelect"></select></label></div></div>
         <p id="parameterDefinition" class="rna-definition"></p>
       </section>
 
@@ -67,7 +67,7 @@
       <section class="panel" id="jointSection">
         <div class="panel-head"><h2>2D Joint Analysis</h2><p>Match measurements by their full observation identity, or follow an explicit base-pair endpoint relation. A pair with two endpoints contributes two related observations.</p></div>
         <div id="jointControls" class="joint-controls"></div>
-        <div class="controls"><label>Family 2<select id="family2Select"></select></label><label>Parameter 2<select id="parameter2Select"></select></label></div>
+        <div class="controls"><div class="filter-cluster" data-rna-control-help="family2Select"><label>Family 2<select id="family2Select"></select></label></div><div class="filter-cluster" data-rna-control-help="parameter2Select"><label>Parameter 2<select id="parameter2Select"></select></label></div></div>
         <div id="jointDisplayControls" class="joint-controls joint-display-controls"></div>
         <div id="jointPlot" class="plot-panel joint-plot-panel"><div class="empty-state">Select a second parameter to generate a joint distribution.</div></div>
         <div id="jointStats" class="stats-strip"></div>
@@ -78,7 +78,7 @@
         <div class="panel-head"><div><h2>Base Geometry Survey</h2><p>Atom-defined base angles, dihedrals, and RNA 2′-OH heavy-atom geometry. Base-internal terms include unpaired residues; pair-specific measurements require an identified interaction.</p></div><button type="button" id="baseGeometryLoad" class="toggle-btn collapse-toggle" disabled>Load base geometry survey</button></div>
         <p id="surveyAvailability" class="rna-note">Checking available survey data…</p>
         <div id="baseGeometryBody" hidden>
-          <div class="controls"><label>Survey group<select id="surveyGroupSelect"></select></label><label>Selected term<select id="baseGeometryTermSelect"></select></label><label>Opening conditioning<select id="surveyOpeningSelect"><option value="all">All residue observations</option><option value="bins">By supported pair opening</option></select></label></div>
+          <div class="controls"><label>Survey group<select id="surveyGroupSelect"></select></label><label>Selected term<select id="baseGeometryTermSelect"></select></label><div class="filter-cluster" data-rna-control-help="surveyOpeningSelect"><label>Opening conditioning<select id="surveyOpeningSelect"><option value="all">All residue observations</option><option value="bins">By supported pair opening</option></select></label></div></div>
           <div id="surveyContextControls" class="joint-controls"></div>
           <p id="surveyDefinition" class="rna-definition"></p>
           <div id="baseGeometryStats" class="stats-strip"></div>

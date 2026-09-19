@@ -1,4 +1,5 @@
 import { decodeCoordinateRows, decodeFamilyRows, decodeInteractionRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from './survey-codec.js';
+import { SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn } from './shared-survey-codec.js';
 
 /** A session pins one immutable RNA release; rejected requests can be retried. */
 const immutableData = new WeakSet();
@@ -143,10 +144,18 @@ export class RnaDataRepository {
       const descriptor = partition !== null && partitions
         ? partitions.find(item => String(item.id ?? item.term_id ?? item.group_key) === String(partition)) : survey;
       if (!descriptor?.path) throw new Error(`RNA survey partition is unavailable: ${kind}/${partition}`);
-      const data = await this.readJson(new URL(descriptor.path, this.releaseUrl).href);
+      let data = await this.readJson(new URL(descriptor.path, this.releaseUrl).href);
       if (data.build_id && data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA survey: ${kind}`);
+      if (kind === 'scalars' && data.encoding === SHARED_SURVEY_ENCODING) {
+        data = await expandSharedSurveyColumns(data, async reference => {
+          if (!/^[a-f0-9]{64}$/.test(reference)) throw new Error('Invalid shared Survey content hash');
+          const values = await this.readJson(new URL(`survey/columns/${reference}.json.gz`, this.releaseUrl).href);
+          return verifySharedColumn(reference, values);
+        });
+      }
       if (kind === 'scalars') {
         const rows = data.encoding === SURVEY_COLUMNAR_ENCODING ? decodeSurveyRows(data, selectedFields) : decodeSurveyRows(data.rows ?? data, selectedFields);
+        if (descriptor.row_count != null && descriptor.row_count !== rows.length) throw new Error('Survey row count mismatch');
         const { columns, missing, ...metadata } = Array.isArray(data) ? {} : data;
         return Array.isArray(data) ? rows : { ...metadata, rows };
       }

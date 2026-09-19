@@ -245,7 +245,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#baseGeometryCoordBody')?.rows.length > 0, null, { timeout: 120000 });
   assert(fetched(report.responses, coordinatesPaths), 'Coordinate request did not fetch real asset');
   const coordinateHeaders = await page.locator('#coordinateBody thead th').allTextContents();
-  assert.deepEqual(coordinateHeaders, ['Atom', 'Observations', 'Residues', 'Pairs', 'PDB entries', 'Mean x (Å)', 'Mean y (Å)', 'Mean z (Å)', 'RMS spread (Å)']);
+  assert.deepEqual(coordinateHeaders, ['Context', 'Atom', 'Observations', 'Residues', 'Pairs', 'PDB entries', 'Mean x (Å)', 'Mean y (Å)', 'Mean z (Å)', 'RMS spread (Å)']);
   const coordinateBinNote = await page.locator('#coordinateBinNote').textContent();
   assert.match(coordinateBinNote, /Opening bins:/, 'Coordinate opening boundaries are not explained');
   const coordinateRows = await page.locator('#baseGeometryCoordBody tr').count();

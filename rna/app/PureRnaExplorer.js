@@ -8,7 +8,7 @@ import { jointOptions } from '../core/joint-options.js';
 import { jointAnalysisKey } from '../core/joint-analysis-key.js';
 import { rankSurveyContexts, orderSurveyRanks, surveyContext } from '../core/survey-ranking.js';
 import { CoordinateSummary } from '../core/coordinates.js';
-import { csv, createPlotSnapshot, provenance, restyleJointSnapshot, restyleTraceSnapshot } from '../core/export.js';
+import { csv, createOwnedPlotSnapshot, provenance, restyleJointSnapshot, restyleTraceSnapshot } from '../core/export.js';
 import { cards, control, distributionLayout, distributionTraces, download, element, entryId, jointLayout, labels, number, options, stats, summaryCards, tableRows } from '../views/panels.js';
 import { annotationLabel } from '../views/labels.js';
 import { JOINT_PALETTE_OPTIONS, jointColorscale } from '../views/palettes.js';
@@ -283,13 +283,15 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   displaySpec(display, parameter) { return { ...display, bins: (parameter.period ? 72 : 64) * (display.fine ? 2 : 1) }; }
   snapshot(options) {
     const result = options.result;
+    const revision = options.revision ?? this.revision;
     const parameters = result.kind === 'joint' ? [result.xParameter, result.yParameter] : [result.parameter];
     // Each render owns its completed result. Plotly receives separate trace arrays;
     // later renders construct new results, so the current result can be frozen in place.
-    return createPlotSnapshot({ ...options, transferResult: true, coordinatePolicy: this.manifest.coordinate_policy ?? this.manifest.provenance?.coordinate_policy,
+    return createOwnedPlotSnapshot({ ...options, coordinatePolicy: this.manifest.coordinate_policy ?? this.manifest.provenance?.coordinate_policy,
       parameterDefinitionIds: parameters.filter(Boolean).map(parameter => parameter.definition_id ?? parameter.id),
       dataHashes: this.manifest.data_hashes ?? this.manifest.hashes ?? this.manifest.checksums ?? Object.fromEntries([['metadata', this.manifest.metadata?.sha256], ...this.families.map(family => [`family:${family.id}`, family.sha256])].filter(([, hash]) => hash)),
-      provenance: { source: this.manifest.source ?? this.manifest.sources, policy: this.manifest.policy, registry_version: this.manifest.registry_version, release_url: this.repository.releaseUrl, ...(options.provenance ?? {}) } });
+      provenance: { source: this.manifest.source ?? this.manifest.sources, policy: this.manifest.policy, registry_version: this.manifest.registry_version, release_url: this.repository.releaseUrl, ...(options.provenance ?? {}) } },
+      { current: () => this.current(revision), checkpoint: () => this.checkpoint(revision) });
   }
   decorate(result) { for (const series of result.series ?? []) series.label = annotationLabel(series.label ?? series.key); return result; }
 
@@ -357,7 +359,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const display = this.displaySpec(state.display, parameter);
     const result = this.decorate(distribution(selection.rows, parameter, display));
     if (!await this.checkpoint(revision)) return;
-    const snapshot = this.snapshot({ result, selectionSpec: state.selection, displaySpec: display, buildId: this.manifest.build_id, parameter, familyId: state.familyId, revision });
+    const snapshot = await this.snapshot({ result, selectionSpec: state.selection, displaySpec: display, buildId: this.manifest.build_id, parameter, familyId: state.familyId, revision });
+    if (!this.current(revision)) return;
     await this.commit(revision, async () => {
       await this.plot(this.$('plot'), distributionTraces(result, display), distributionLayout(result, display.normalization));
       if (!this.current(revision)) return;
@@ -535,7 +538,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const { xParameter, yParameter } = result;
     const analysisKey = this.jointAnalysisKey(state);
     const snapshot = previousSnapshot ? restyleJointSnapshot(previousSnapshot, state.joint)
-      : this.snapshot({ result, selectionSpec: state.selection, displaySpec: state.display, buildId: this.manifest.build_id, joinSpec: state.joint, provenance: analysisProvenance, revision });
+      : await this.snapshot({ result, selectionSpec: state.selection, displaySpec: state.display, buildId: this.manifest.build_id, joinSpec: state.joint, provenance: analysisProvenance, revision });
+    if (!this.current(revision)) return;
     await this.commit(revision, async () => {
       // Match DNA's display floor; histogram intensities and hover remain raw.
       const logFloor = 1e-8, logarithmic = state.joint.colorScale === 'log';
@@ -649,7 +653,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const display = { ...this.displaySpec(state.display, parameter), groupBy: state.survey.opening === 'bins' ? 'opening_bin' : state.display.groupBy };
     const result = this.decorate(distribution(termRows, parameter, display));
     if (!await this.checkpoint(revision)) return;
-    const snapshot = this.snapshot({ result, selectionSpec: { ...state.selection, contexts: state.survey.contexts ?? [] }, buildId: this.manifest.build_id, displaySpec: display, provenance: { survey_term: term.id, survey_contexts: state.survey.contexts ?? [], opening_conditioning: state.survey.opening, opening_bins: this.manifest.survey.opening_bins, incidence_policy: state.survey.opening === 'bins' ? 'one row per explicit residue-pair incidence' : 'one row per residue or pair observable' } });
+    const snapshot = await this.snapshot({ result, revision, selectionSpec: { ...state.selection, contexts: state.survey.contexts ?? [] }, buildId: this.manifest.build_id, displaySpec: display, provenance: { survey_term: term.id, survey_contexts: state.survey.contexts ?? [], opening_conditioning: state.survey.opening, opening_bins: this.manifest.survey.opening_bins, incidence_policy: state.survey.opening === 'bins' ? 'one row per explicit residue-pair incidence' : 'one row per residue or pair observable' } });
+    if (!this.current(revision)) return;
     await this.commit(revision, async () => {
       await this.plot(this.$('baseGeometryPlot'), distributionTraces(result, state.display), distributionLayout(result, state.display.normalization));
       if (!this.current(revision)) return;

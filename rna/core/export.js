@@ -1,4 +1,4 @@
-import { deepFreeze, isImmutableData } from './repository.js';
+import { deepFreeze, deepFreezeOwned, isImmutableData } from './repository.js';
 import { JOINT_STYLE_KEYS } from './joint-analysis-key.js';
 
 const createdSnapshots = new WeakSet();
@@ -36,6 +36,38 @@ export function createPlotSnapshot(options) {
   });
   if (options.transferResult) snapshot.result = options.result;
   deepFreeze(snapshot);
+  createdSnapshots.add(snapshot);
+  return snapshot;
+}
+
+/** Transfer a completed, exclusively owned result and freeze it cooperatively.
+ * Capture/copy metadata before the first yield, exactly as the synchronous API.
+ * No caller may mutate the result graph while this promise is pending. A failed
+ * or superseded construction must be discarded, including partially frozen
+ * result objects. Only successful completion grants snapshot reuse capability.
+ */
+export async function createOwnedPlotSnapshot(options, scheduling = {}) {
+  if (!options?.result) throw new Error('A plot snapshot requires a completed result');
+  const snapshot = ownedPlainCopy({
+    snapshot_id: options.snapshot_id || snapshotId(),
+    build_id: options.buildId || options.build_id || null,
+    created_at: options.created_at || new Date().toISOString(),
+    selection_spec: options.selectionSpec || options.selection_spec || {},
+    display_spec: options.displaySpec || options.result.displaySpec || {},
+    parameter_definition_ids: options.parameterDefinitionIds || [],
+    coordinate_policy: options.coordinatePolicy || null,
+    data_hashes: options.dataHashes || {},
+    provenance: options.provenance || {},
+    join_spec: options.joinSpec || null,
+    result: null,
+  });
+  snapshot.result = options.result;
+  await deepFreezeOwned(snapshot, scheduling);
+  // No yield between the final current check and capability publication.
+  if (scheduling.current && !scheduling.current()) {
+    const error = new Error('RNA snapshot construction was superseded');
+    error.name = 'AbortError'; throw error;
+  }
   createdSnapshots.add(snapshot);
   return snapshot;
 }

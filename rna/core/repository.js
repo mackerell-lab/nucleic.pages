@@ -5,6 +5,7 @@ import { BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle
 import { PACKED_COORDINATE_ENCODING, expandPackedCoordinates } from './packed-coordinate-codec.js';
 import { PACKED_FAMILY_ENCODING, expandPackedFamily } from './packed-family-codec.js';
 import { PACKED_SURVEY_ENCODING, expandPackedSurvey } from './packed-survey-codec.js';
+import { freezeOwnedGraph } from './cooperative-freeze.js';
 
 /** A session pins one immutable RNA release; rejected requests can be retried. */
 const immutableData = new WeakSet();
@@ -34,6 +35,11 @@ export function deepFreeze(value, seen = new WeakSet()) {
     Object.freeze(value);
   }
   return value;
+}
+
+/** Cooperative ownership transfer uses only previously established proofs. */
+export function deepFreezeOwned(value, scheduling) {
+  return freezeOwnedGraph(value, scheduling, item => immutableData.has(item));
 }
 
 export class RnaDataRepository {

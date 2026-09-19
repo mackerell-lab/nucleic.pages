@@ -390,7 +390,15 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const values = [...new Set(rowsOf(family).map(row => row.context ?? row.sequence_context ?? row.pair_label ?? row.step_label ?? row.base ?? row.base_code ?? row.comp_id).filter(Boolean))].sort();
     if (!values.length) return;
     const old = this.$('contextGroup'); const cluster = old?.parentElement; if (!cluster) return;
-    const temporary = element('div'); control(temporary, { id: 'contextGroup', title: 'Sequence Context', choices: values.map(id => ({ id, label: id })), selected: state.selection.contexts, multi: true, allLabel: 'All contexts', onChange: contexts => this.setSelection({ contexts }) }); cluster.replaceWith(temporary.firstChild);
+    const temporary = element('div'); const renderedControl = control(temporary, { id: 'contextGroup', title: 'Sequence Context', choices: values.map(id => ({ id, label: id })), selected: state.selection.contexts, multi: true, allLabel: 'All contexts', onChange: contexts => {
+      if (!renderedControl.isConnected) return;
+      // Old family controls may remain visible after a failed family load.
+      // Clearing all contexts is safe and also provides a normal retry path.
+      if (contexts.length && (this.state.familyId !== state.familyId || contexts.some(context => !values.includes(context)))) {
+        this.updateContexts(family, state); return;
+      }
+      this.setSelection({ contexts });
+    } }); cluster.replaceWith(temporary.firstChild);
   }
 
   updatePuckerControls(family, state) {
@@ -398,7 +406,13 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const states = [...new Set(rowsOf(family).map(row => row.pucker_class ?? row.pucker_state).filter(value => typeof value === 'string'))].sort();
     if (!states.length) { existing?.remove(); return; }
     const temporary = element('div');
-    control(temporary, { id: 'puckerGroup', title: 'Ribose Pucker', choices: [{ id: 'all', label: 'All puckers' }, ...states.map(id => ({ id, label: id }))], selected: state.selection.puckerStates?.[0] ?? 'all', select: true, onChange: value => this.setSelection({ puckerStates: value === 'all' ? [] : [value] }), help: 'Recorded ribose pseudorotation sectors. Undefined pucker is retained by the All setting.' });
+    const renderedControl = control(temporary, { id: 'puckerGroup', title: 'Ribose Pucker', choices: [{ id: 'all', label: 'All puckers' }, ...states.map(id => ({ id, label: id }))], selected: state.selection.puckerStates?.[0] ?? 'all', select: true, onChange: value => {
+      if (!renderedControl.isConnected) return;
+      if (value !== 'all' && (this.state.familyId !== state.familyId || !states.includes(value))) {
+        this.updatePuckerControls(family, state); return;
+      }
+      this.setSelection({ puckerStates: value === 'all' ? [] : [value] });
+    }, help: 'Recorded ribose pseudorotation sectors. Undefined pucker is retained by the All setting.' });
     if (existing) existing.replaceWith(temporary.firstChild); else this.$('dataControls').append(temporary.firstChild);
   }
 
@@ -616,9 +630,26 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       options(this.$('surveyGroupSelect'), [{ id: 'all', label: 'All groups' }, ...groups.map(id => ({ id, label: annotationLabel(id) }))], state.survey.group);
       options(this.$('baseGeometryTermSelect'), available, term.id); this.state.survey.termId = term.id;
       this.$('surveyContextControls').replaceChildren();
-      const contexts = [...new Set([...normalized.map(surveyContext), ...(state.survey.contexts ?? [])])].sort();
-      control(this.$('surveyContextControls'), { id: 'baseGeometryContextGroup', title: 'Survey Context', choices: contexts.map(id => ({ id, label: id })), selected: state.survey.contexts ?? [], multi: true, allLabel: 'All contexts',
-        onChange: contexts => { this.state.survey.contexts = contexts; this.requestRender(); }, help: 'Independent survey context selection. All contexts includes all recorded contexts; global entry and annotation filters still apply.' });
+      const recordedContexts = new Set(normalized.map(surveyContext));
+      const contexts = [...new Set([...recordedContexts, ...(state.survey.contexts ?? [])])].sort();
+      const contextControl = control(this.$('surveyContextControls'), { id: 'baseGeometryContextGroup', title: 'Survey Context', choices: contexts.map(id => ({ id, label: id })), selected: state.survey.contexts ?? [], multi: true, allLabel: 'All contexts',
+        onChange: contexts => {
+          if (!contextControl.isConnected) return;
+          // Old controls can remain visible after a different term/group fails.
+          // All contexts is always a safe retry; specific contexts belong to
+          // the scientific term that supplied this control, not its revision.
+          const currentTerm = this.state.survey.termId === term.id && this.state.survey.group === state.survey.group;
+          if (contexts.length && (!currentTerm || contexts.some(context => !recordedContexts.has(context)))) {
+            for (const button of contextControl.querySelectorAll('button[data-value]')) {
+              button.disabled = true; button.classList.remove('active'); button.setAttribute('aria-pressed', 'false');
+            }
+            const all = contextControl.querySelector('button[data-all]');
+            const unfiltered = !(this.state.survey.contexts ?? []).length;
+            all.classList.toggle('active', unfiltered); all.setAttribute('aria-pressed', String(unfiltered));
+            return;
+          }
+          this.state.survey.contexts = contexts; this.requestRender();
+        }, help: 'Independent survey context selection. All contexts includes all recorded contexts; global entry and annotation filters still apply.' });
       this.$('surveyDefinition').textContent = this.definition(parameter);
       stats(this.$('baseGeometryStats'), [['Filtered scalar rows', selection.rows.length, 'baseGeometryScalarRows'], ['Survey terms', terms.length, 'baseGeometryRankRows'], ['Plotted term rows', termRows.filter(row => parameterValue(row, parameter) !== null).length, 'baseGeometrySelectedRows']]);
       this.$('surveyCoverageBody').replaceChildren(...available.map(item => {

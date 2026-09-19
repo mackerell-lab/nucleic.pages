@@ -7,6 +7,7 @@ import { sha256 } from './output_scope.mjs';
 
 export function releaseDescriptors(manifest) {
   return [manifest.metadata, ...(manifest.families ?? []),
+    ...Object.values(manifest.family_bundles ?? {}),
     ...Object.values(manifest.relations ?? {}), manifest.provenance?.decisions,
     ...Object.values(manifest.survey?.scalars?.terms ?? {}),
     ...Object.values(manifest.survey?.coordinates?.groups ?? {}).flatMap(group => group.partitions ?? [group]),

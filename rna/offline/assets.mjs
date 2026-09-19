@@ -8,6 +8,7 @@ import {readJson, sha256} from './output_scope.mjs';
 import {encodeCoordinateRows, encodeFamilyRows, encodeInteractionRows, encodeSurveyRows, decodeCoordinateRows, decodeFamilyRows, decodeInteractionRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING} from '../core/survey-codec.js';
 import {SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn} from '../core/shared-survey-codec.js';
 import {BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle} from '../core/bundled-survey-codec.js';
+import {BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle} from '../core/bundled-family-codec.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',sugar_torsion:'Sugar Torsions',
@@ -239,8 +240,12 @@ export async function validateRelease(manifestPath) {
   const manifest = await readJson(manifestPath), root = path.dirname(manifestPath), errors = [], checks = [];
   const realRoot = await fs.realpath(root), fullRelease = manifest.partial === false;
   const usedBundles = new Set(), bundleRegistry = manifest.survey?.bundles;
+  const usedFamilyBundles = new Set(), familyBundleRegistry = manifest.family_bundles;
   if (bundleRegistry !== undefined && (!bundleRegistry || typeof bundleRegistry !== 'object' || Array.isArray(bundleRegistry))) {
     throw new Error('Invalid Survey bundle registry');
+  }
+  if (familyBundleRegistry !== undefined && (!familyBundleRegistry || typeof familyBundleRegistry !== 'object' || Array.isArray(familyBundleRegistry))) {
+    throw new Error('Invalid family bundle registry');
   }
   const readAsset = async (descriptor, {requireHash = true} = {}) => {
     if (typeof descriptor?.path !== 'string' || !descriptor.path || path.isAbsolute(descriptor.path)
@@ -277,7 +282,19 @@ export async function validateRelease(manifestPath) {
     const payload = await readAsset(descriptor ?? {path: fixedPath}, {requireHash: Boolean(descriptor)});
     return (await verifySurveyBundle(reference, payload)).bundle;
   };
-  const encodings = new Set([BUNDLED_SURVEY_ENCODING, SHARED_SURVEY_ENCODING, SURVEY_COLUMNAR_ENCODING,
+  const readFamilyBundle = async reference => {
+    if (!/^[a-f0-9]{64}$/.test(reference)) throw new Error('Invalid family bundle content hash');
+    const fixedPath = `families/bundles/${reference}.json.gz`;
+    const descriptor = familyBundleRegistry && Object.hasOwn(familyBundleRegistry, reference) ? familyBundleRegistry[reference] : null;
+    if (!descriptor && fullRelease) throw new Error(`Unregistered family bundle: ${reference}`);
+    if (descriptor && (descriptor.path !== fixedPath || descriptor.content_sha256 !== reference
+        || (fullRelease && (!Number.isSafeInteger(descriptor.bytes) || !Number.isSafeInteger(descriptor.uncompressed_bytes))))) {
+      throw new Error(`Invalid family bundle registry descriptor: ${reference}`);
+    }
+    const payload = await readAsset(descriptor ?? {path: fixedPath}, {requireHash: Boolean(descriptor)});
+    return (await verifyFamilyBundle(reference, payload)).bundle;
+  };
+  const encodings = new Set([BUNDLED_FAMILY_ENCODING, BUNDLED_SURVEY_ENCODING, SHARED_SURVEY_ENCODING, SURVEY_COLUMNAR_ENCODING,
     COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING]);
   const load = async descriptor => {
     const data = await readAsset(descriptor);
@@ -285,6 +302,13 @@ export async function validateRelease(manifestPath) {
       if (descriptor.encoding !== data?.encoding) throw new Error(`Asset encoding mismatch: ${descriptor.path}`);
       if (!encodings.has(descriptor.encoding)) throw new Error(`Unsupported asset encoding: ${descriptor.encoding}`);
       if (fullRelease && data.build_id !== manifest.build_id) throw new Error(`Asset build ID mismatch: ${descriptor.path}`);
+    }
+    if (descriptor.encoding === BUNDLED_FAMILY_ENCODING) {
+      const expanded = await expandBundledFamilyColumns(data, async reference => {
+        usedFamilyBundles.add(reference);
+        return readFamilyBundle(reference);
+      });
+      return decodeFamilyRows(expanded);
     }
     if (descriptor.encoding === BUNDLED_SURVEY_ENCODING) {
       const expanded = await expandBundledSurveyColumns(data, async reference => {
@@ -348,6 +372,12 @@ export async function validateRelease(manifestPath) {
     checks.push({family:family.id,row_count:rows.length});
   }
   if(residueIds.size!==manifest.counts.residues) errors.push('Residue count');
+  for (const reference of Object.keys(familyBundleRegistry ?? {})) {
+    if (!usedFamilyBundles.has(reference)) {
+      await readFamilyBundle(reference);
+      if (fullRelease) throw new Error(`Unreferenced family bundle: ${reference}`);
+    }
+  }
   const endpoints=(row,label)=>{
     const ids=row.residue_ids ?? [row.residue_id ?? row.target_residue_id].filter(Boolean);
     const targets=ids.map(id=>residueMap.get(id));

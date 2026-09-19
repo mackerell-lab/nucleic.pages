@@ -386,7 +386,10 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     }
     if (specs.left !== state.selection) leftSelection = selectRows(await this.repository.loadFamily(state.familyId), this.metadata, specs.left);
     if (!this.current(revision)) return;
-    const rightSelection = selectRows(rightTable, this.metadata, specs.right);
+    // Same-family identity axes share the captured selection, including row
+    // order and annotations. Endpoint-specific filters must remain independent.
+    const rightSelection = state.familyId === state.family2Id && specs.left === specs.right
+      ? leftSelection : selectRows(rightTable, this.metadata, specs.right);
     this.updateJointResidueControls(yParameter.level === 'residue' ? rightTable : xParameter.level === 'residue' ? await this.repository.loadFamily(state.familyId) : null, state);
     let relations = [];
     if (state.joint.mode === 'relation') {

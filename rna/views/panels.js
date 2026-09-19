@@ -1,8 +1,15 @@
 import { wrapCircular } from '../math/numeric.js';
 import { RNA_CONTROL_HELP } from '../config/control-help.js';
+import { displayStatisticValue } from './statistic-display.js';
 import { plotAxisSpec } from '../core/axis-layout.js';
 
 const COLORS = ['#174a7e', '#8c3b2a', '#146c43', '#8659a1', '#be882e', '#32898c', '#ae567e', '#6a6256'];
+// DNA Base Geometry Survey semantics: identity, not surviving series index.
+const OPENING_BIN_STYLES = Object.freeze({
+  small: Object.freeze({ order: 0, color: '#174a7e' }),
+  middle: Object.freeze({ order: 1, color: '#c46b00' }),
+  large: Object.freeze({ order: 2, color: '#8c3b2a' }),
+});
 export const entryId = row => String(row.accession ?? row.pdb_id ?? row.pdb ?? row.entry_id ?? row.id ?? '').toUpperCase();
 export const number = value => Number.isFinite(value) ? value.toLocaleString('en-US', { maximumFractionDigits: 3 }) : '—';
 export const labels = value => Array.isArray(value) ? value.map(x => typeof x === 'object' ? x.label ?? x.name ?? x.id ?? '' : String(x)) : value ? [String(value)] : [];
@@ -149,10 +156,16 @@ export function distributionTraces(result, display = {}) {
   const normalization = result.displaySpec?.normalization ?? display.normalization;
   const intensity = normalization === 'density' ? 'Probability density (smoothed)' : 'Probability (smoothed)';
   const periodic = Number.isFinite(parameter.period) && parameter.period > 0;
-  return (result.series ?? []).map((series, index) => ({
+  const openingBins = (result.displaySpec?.groupBy ?? display.groupBy) === 'opening_bin';
+  const styled = (result.series ?? []).map((series, index) => {
+    const style = openingBins ? OPENING_BIN_STYLES[series.key] : null;
+    return { series, color: style?.color ?? COLORS[index % COLORS.length], order: style?.order ?? 3 };
+  });
+  if (openingBins) styled.sort((a, b) => a.order - b.order);
+  return styled.map(({ series, color }) => ({
     type: 'scatter', mode: 'lines', name: `${series.label ?? series.key} (n=${number(series.values?.length ?? series.rows?.length ?? series.statistics?.n ?? 0)})`,
-    x: Array.from(series.x ?? []), y: Array.from(series.y ?? []), line: { color: COLORS[index % COLORS.length], width: 2.4 },
-    fill: display.traceStyle === 'line' ? 'none' : 'tozeroy', fillcolor: `${COLORS[index % COLORS.length]}18`,
+    x: Array.from(series.x ?? []), y: Array.from(series.y ?? []), line: { color, width: 2.4 },
+    fill: display.traceStyle === 'line' ? 'none' : 'tozeroy', fillcolor: `${color}18`,
     ...(periodic ? { customdata: Array.from(series.x ?? [], value => [value, wrapCircular(value, parameter.period)]) } : {}),
     hovertemplate: `${label}<br>${periodic ? 'View %{customdata[0]:.3f}<br>Angle %{customdata[1]:.3f}' : '%{x:.3f}'}<br>${intensity} %{y:.4g}<extra>%{fullData.name}</extra>`,
   }));
@@ -161,9 +174,7 @@ export function summaryCards(parent, result) {
   cards(parent, (result.series ?? []).map(series => {
     const stat = series.statistics ?? {};
     const circular = Boolean(result.parameter?.period);
-    const cut = series.displayCut ?? result.displayCut ?? 0;
-    const displayedAngle = value => circular && Number.isFinite(value)
-      ? wrapCircular(value - cut, result.parameter.period) + cut : value;
+    const displayedAngle = value => displayStatisticValue(value, result.parameter, result.displaySpec?.circularMode);
     const metrics = [['Rows', stat.n ?? series.values?.length ?? series.rows?.length ?? 0], ['PDBs', stat.pdbCount], ['Mean', stat.mean ?? stat.circularMean ?? stat.circular_mean], [circular ? 'Circular std. deviation' : 'Std. deviation', stat.sd ?? stat.std ?? stat.standardDeviation ?? stat.circularStd], ...(circular ? [['Resultant length', stat.resultant], ['Smoothed peak', stat.peak]] : [['P05', stat.p05 ?? stat.q05], ['P95', stat.p95 ?? stat.q95]])];
     return { title: series.label ?? series.key, kind: circular ? 'Circular distribution' : 'Linear distribution', detail: `${number(series.values?.length ?? series.rows?.length ?? stat.n ?? 0)} finite observations${circular ? '. Resultant length measures angular concentration (0–1). Circular percentiles are not reported; the peak depends on binning and smoothing.' : ''}`, metrics: metrics.map(([name, value]) => {
       const displayed = name === 'Mean' || name === 'Smoothed peak' ? displayedAngle(value) : value;

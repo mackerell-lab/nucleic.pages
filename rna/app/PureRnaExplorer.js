@@ -688,6 +688,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       const bins = (this.manifest.survey.opening_bins ?? []).filter(bin => Number.isFinite(bin.min) && Number.isFinite(bin.max));
       this.$('baseGeometryBinNote').textContent = bins.length ? bins.map(bin => `${bin.label ?? bin.id}: ${bin.include_min ? '[' : '('}${bin.min}, ${bin.max}${bin.include_max ? ']' : ')'}°`).join(' · ') + ' These are descriptive bins, not RNA conformation thresholds.' : 'This release does not declare opening-bin boundaries; conditioned comparisons are unavailable.';
     });
+    if (!this.current(revision)) return;
     if (this.lastSurveyTerm && this.lastSurveyTerm !== term.id) this.repository.releaseSurvey?.('scalars', this.lastSurveyTerm);
     this.lastSurveyTerm = term.id;
     if (state.survey.ranking && this.current(revision)) await this.renderOpeningRanking(available, state, revision, openingIndex);
@@ -849,6 +850,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       if (!averages.length) { const row = element('tr'); row.append(element('td', { colspan: '10' }, 'No coordinate observations match the current filters.')); this.$('baseGeometryCoordBody').append(row); }
       this.completedCoordinateKey = coordinateKey;
     });
+    if (!this.current(revision)) return;
     if (this.lastCoordinateGroup && this.lastCoordinateGroup !== group) this.repository.releaseSurvey?.('coordinates', this.lastCoordinateGroup);
     this.lastCoordinateGroup = group;
   }

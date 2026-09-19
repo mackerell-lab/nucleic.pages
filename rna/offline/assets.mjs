@@ -10,6 +10,7 @@ import {SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn} f
 import {BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle} from '../core/bundled-survey-codec.js';
 import {BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle} from '../core/bundled-family-codec.js';
 import {PACKED_COORDINATE_ENCODING, expandPackedCoordinates} from '../core/packed-coordinate-codec.js';
+import {PACKED_FAMILY_ENCODING, expandPackedFamily} from '../core/packed-family-codec.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',sugar_torsion:'Sugar Torsions',
@@ -295,7 +296,7 @@ export async function validateRelease(manifestPath) {
     const payload = await readAsset(descriptor ?? {path: fixedPath}, {requireHash: Boolean(descriptor)});
     return (await verifyFamilyBundle(reference, payload)).bundle;
   };
-  const encodings = new Set([BUNDLED_FAMILY_ENCODING, BUNDLED_SURVEY_ENCODING, SHARED_SURVEY_ENCODING, SURVEY_COLUMNAR_ENCODING,
+  const encodings = new Set([PACKED_FAMILY_ENCODING, BUNDLED_FAMILY_ENCODING, BUNDLED_SURVEY_ENCODING, SHARED_SURVEY_ENCODING, SURVEY_COLUMNAR_ENCODING,
     PACKED_COORDINATE_ENCODING, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING]);
   const load = async descriptor => {
     const data = await readAsset(descriptor);
@@ -304,8 +305,9 @@ export async function validateRelease(manifestPath) {
       if (!encodings.has(descriptor.encoding)) throw new Error(`Unsupported asset encoding: ${descriptor.encoding}`);
       if (fullRelease && data.build_id !== manifest.build_id) throw new Error(`Asset build ID mismatch: ${descriptor.path}`);
     }
-    if (descriptor.encoding === BUNDLED_FAMILY_ENCODING) {
-      const expanded = await expandBundledFamilyColumns(data, async reference => {
+    if (descriptor.encoding === BUNDLED_FAMILY_ENCODING || descriptor.encoding === PACKED_FAMILY_ENCODING) {
+      const bundled = descriptor.encoding === PACKED_FAMILY_ENCODING ? expandPackedFamily(data) : data;
+      const expanded = await expandBundledFamilyColumns(bundled, async reference => {
         usedFamilyBundles.add(reference);
         return readFamilyBundle(reference);
       });

@@ -14,6 +14,7 @@ import {encodeFamilyRows, encodeSurveyRows, encodeCoordinateRows, decodeFamilyRo
 import {BUNDLED_FAMILY_ENCODING, FAMILY_BUNDLE_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle} from '../core/bundled-family-codec.js';
 import {BUNDLED_SURVEY_ENCODING, SURVEY_BUNDLE_ENCODING, expandBundledSurveyColumns, verifySurveyBundle} from '../core/bundled-survey-codec.js';
 import {PACKED_COORDINATE_ENCODING, encodePackedCoordinates, expandPackedCoordinates} from '../core/packed-coordinate-codec.js';
+import {PACKED_FAMILY_ENCODING, encodePackedFamily, expandPackedFamily} from '../core/packed-family-codec.js';
 
 const execute = promisify(execFile);
 const script = fileURLToPath(new URL('../offline/repack_bundled_release.mjs', import.meta.url));
@@ -42,6 +43,7 @@ async function bundleTransport(root, packed, kind, fields) {
   return {packed: result, registry: {[reference]: descriptor}};
 }
 async function expand(root, packed, manifest, kind) {
+  if (packed.encoding === PACKED_FAMILY_ENCODING) packed = expandPackedFamily(packed);
   const family = kind === 'family', registry = family ? manifest.family_bundles : manifest.survey.bundles;
   if (packed.encoding !== (family ? BUNDLED_FAMILY_ENCODING : BUNDLED_SURVEY_ENCODING)) return packed;
   const expandColumns = family ? expandBundledFamilyColumns : expandBundledSurveyColumns;
@@ -97,6 +99,26 @@ async function fixture(t, {familyBundled = true} = {}) {
 async function candidateFor(sourceFile, directory, kind) {
   await fs.mkdir(directory);
   const sourceRoot = path.dirname(sourceFile), sourceBytes = await fs.readFile(sourceFile), source = JSON.parse(sourceBytes);
+  if (kind === 'packed-family') {
+    const family_bundles = structuredClone(source.family_bundles ?? {});
+    for (const descriptor of Object.values(family_bundles)) {
+      await fs.mkdir(path.dirname(path.join(directory, descriptor.path)), {recursive: true});
+      await fs.copyFile(path.join(sourceRoot, descriptor.path), path.join(directory, descriptor.path));
+    }
+    const families = [];
+    let firstPacked;
+    for (const descriptor of source.families) {
+      let original = await readPacked(sourceRoot, descriptor);
+      if (original.encoding === PACKED_FAMILY_ENCODING) original = expandPackedFamily(original);
+      const packed = structuredClone(encodePackedFamily(original));
+      families.push({...descriptor, ...await writePacked(directory, descriptor.path, packed), encoding: PACKED_FAMILY_ENCODING});
+      firstPacked ??= packed;
+    }
+    const candidate = {schema_version: 'rna-family-packed-candidate-1', family_only: true, build_id: source.build_id,
+      source_manifest: {path: sourceFile, sha256: sha256(sourceBytes)}, families, family_bundles};
+    const file = path.join(directory, 'candidate.json'); await fs.writeFile(file, JSON.stringify(candidate));
+    return {file, candidate, descriptor: families[0], packed: firstPacked};
+  }
   if (kind === 'coordinate') {
     const coordinates = structuredClone(source.survey.coordinates);
     let firstPacked, firstDescriptor;
@@ -297,5 +319,69 @@ test('coordinate repack rejects rehashed numeric and identity changes despite va
     Object.assign(c.descriptor, await writePacked(directory, c.descriptor.path, changed));
     await fs.writeFile(c.file, JSON.stringify(c.candidate));
     await assert.rejects(run(f.sourceFile, c.file, path.join(f.directory, 'corrupted-coordinate'), 'new-coordinate-build'), /All original coordinate transport metadata and columns/);
+  }
+});
+
+test('packed family repacks preserve Survey bundles and packed coordinates across repeated migration', async t => {
+  const f = await fixture(t);
+  const coordinateCandidate = await candidateFor(f.sourceFile, path.join(f.directory, 'coordinate-candidate'), 'coordinate');
+  const coordinateOutput = path.join(f.directory, 'coordinate-source');
+  await run(f.sourceFile, coordinateCandidate.file, coordinateOutput, 'coordinate-source');
+  let sourceFile = path.join(coordinateOutput, 'manifest.json');
+  for (let round = 0; round < 2; round++) {
+    const source = await readJson(sourceFile);
+    const c = await candidateFor(sourceFile, path.join(f.directory, `packed-family-candidate-${round}`), 'packed-family');
+    const output = path.join(f.directory, `packed-family-release-${round}`);
+    const report = await run(sourceFile, c.file, output, `packed-family-build-${round}`);
+    const manifestFile = path.join(output, 'manifest.json'), manifest = await readJson(manifestFile);
+    assert.equal(report.candidate_kind, 'family');
+    assert.equal(manifest.families[0].encoding, PACKED_FAMILY_ENCODING);
+    assert.equal(manifest.provenance.repack.operation, 'lossless_packed_family_transport');
+    assert.equal(manifest.provenance.repack.family_encoding, PACKED_FAMILY_ENCODING);
+    assert.ok(manifest.provenance.repack.code_sha256['../core/packed-family-codec.js']);
+    assert.ok(manifest.provenance.repack.code_sha256['../core/packed-coordinate-codec.js']);
+    assert.deepEqual(manifest.provenance.source_release.repack, source.provenance.repack);
+    assert.deepEqual(manifest.family_bundles, source.family_bundles);
+    assert.deepEqual(manifest.survey.bundles, source.survey.bundles);
+    const actual = decodeFamilyRows(await expand(output, await readPacked(output, manifest.families[0]), manifest, 'family'));
+    assert.deepEqual(actual, f.rows);
+    actual.forEach((row, index) => assert(Object.is(row.values.chi, f.rows[index].values.chi)));
+    assert.deepEqual(decodeSurveyRows(await expand(output, await readPacked(output, manifest.survey.scalars.terms.angle), manifest, 'scalar')), f.scalars);
+    for (const group of Object.values(manifest.survey.coordinates.groups)) {
+      const coordinates = [];
+      for (const descriptor of group.partitions) {
+        assert.equal(descriptor.encoding, PACKED_COORDINATE_ENCODING);
+        coordinates.push(...decodeCoordinateRows(expandPackedCoordinates(await readPacked(output, descriptor))));
+      }
+      assert.deepEqual(coordinates, f.coordinateRows);
+    }
+    assert.equal((await validateRelease(manifestFile)).ok, true);
+    assert.equal((await verifyReleaseInventory(manifestFile)).ok, true);
+    sourceFile = manifestFile;
+  }
+});
+
+test('packed family repack pins candidate descriptor schema build and numerical values', async t => {
+  for (const [mutation, expected] of [
+    ['descriptor', /Resource encoding|Candidate descriptor encoding/],
+    ['payload', /Resource encoding/],
+    ['schema', /Candidate descriptor encoding/],
+    ['build', /Candidate build identity/],
+    ['value', /All original family transport metadata and columns/],
+  ]) {
+    const f = await fixture(t), directory = path.join(f.directory, 'packed-candidate');
+    const c = await candidateFor(f.sourceFile, directory, 'packed-family');
+    if (mutation === 'descriptor') c.descriptor.encoding = BUNDLED_FAMILY_ENCODING;
+    if (mutation === 'payload') c.packed.encoding = BUNDLED_FAMILY_ENCODING;
+    if (mutation === 'schema') c.candidate.schema_version = 'rna-family-bundled-candidate-1';
+    if (mutation === 'build') c.packed.build_id = 'wrong-build';
+    if (mutation === 'value') {
+      const expanded = structuredClone(expandPackedFamily(c.packed));
+      expanded.columns.values = [{chi: 99.125}, {chi: 99.125}];
+      c.packed = encodePackedFamily(expanded);
+    }
+    Object.assign(c.descriptor, await writePacked(directory, c.descriptor.path, c.packed));
+    await fs.writeFile(c.file, JSON.stringify(c.candidate));
+    await assert.rejects(run(f.sourceFile, c.file, path.join(f.directory, 'corrupt-packed-family'), 'new-packed-family'), expected);
   }
 });

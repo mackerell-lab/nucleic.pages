@@ -13,6 +13,7 @@ import { BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle
 import { BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle } from '../core/bundled-family-codec.js';
 import { SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn } from '../core/shared-survey-codec.js';
 import { PACKED_COORDINATE_ENCODING, expandPackedCoordinates } from '../core/packed-coordinate-codec.js';
+import { PACKED_FAMILY_ENCODING, expandPackedFamily } from '../core/packed-family-codec.js';
 import { releaseDescriptors } from './verify_release_inventory.mjs';
 
 const [sourceArgument, candidateArgument, outputArgument, buildId, ...extra] = process.argv.slice(2);
@@ -32,8 +33,10 @@ assert.ok(source.build_id && source.build_id !== buildId, 'New immutable build i
 const candidateKinds = ['scalar', 'family', 'coordinate'].filter(kind => candidate[`${kind}_only`] === true);
 assert.equal(candidateKinds.length, 1, 'Exactly one scalar_only, family_only, or coordinate_only candidate kind');
 const candidateKind = candidateKinds[0];
-const candidateEncoding = {family: BUNDLED_FAMILY_ENCODING, scalar: BUNDLED_SURVEY_ENCODING, coordinate: PACKED_COORDINATE_ENCODING}[candidateKind];
-assert.equal(candidate.schema_version, {family: 'rna-family-bundled-candidate-1', scalar: 'rna-survey-bundled-candidate-1', coordinate: 'rna-coordinate-packed-candidate-1'}[candidateKind], 'Candidate schema');
+const candidateSchemas = {family: {'rna-family-bundled-candidate-1': BUNDLED_FAMILY_ENCODING, 'rna-family-packed-candidate-1': PACKED_FAMILY_ENCODING},
+  scalar: {'rna-survey-bundled-candidate-1': BUNDLED_SURVEY_ENCODING}, coordinate: {'rna-coordinate-packed-candidate-1': PACKED_COORDINATE_ENCODING}};
+assert.ok(Object.hasOwn(candidateSchemas[candidateKind], candidate.schema_version), 'Candidate schema');
+const candidateEncoding = candidateSchemas[candidateKind][candidate.schema_version];
 assert.equal(candidate.build_id, source.build_id, 'Candidate source identity');
 assert.equal(candidate.source_manifest.sha256, sha256(sourceBytes), 'Candidate source manifest identity');
 const without = (item, keys) => Object.fromEntries(Object.entries(item).filter(([key]) => !keys.includes(key)));
@@ -125,6 +128,7 @@ async function writeResource(descriptor, compressed, rawLength) {
 }
 
 async function expandedTransport(data, root, release) {
+  if (data?.encoding === PACKED_FAMILY_ENCODING) data = expandPackedFamily(data);
   if (data?.encoding === PACKED_COORDINATE_ENCODING) return expandPackedCoordinates(data);
   if (data?.encoding === BUNDLED_SURVEY_ENCODING) {
     return expandBundledSurveyColumns(data, async reference => {
@@ -210,6 +214,7 @@ async function repack(descriptor, replacement = null) {
   if (original.data?.encoding) assert.equal(original.data.build_id, source.build_id, `Source build identity: ${descriptor.path}`);
   const input = replacement ? await readResource(candidateRoot, replacement) : original;
   if (replacement) {
+    assert.equal(replacement.encoding, candidateEncoding, 'Candidate descriptor encoding');
     assert.equal(input.data.encoding, candidateEncoding);
     assert.equal(input.data.build_id, source.build_id, 'Candidate build identity');
     assert.deepEqual(scientificDescriptor(replacement), scientificDescriptor(descriptor), 'Unchanged candidate scientific descriptor');
@@ -274,12 +279,13 @@ manifest.provenance.source_release = {
 };
 delete manifest.provenance.build_stages;
 manifest.provenance.repack = {
-  operation: {family: 'lossless_bundled_family_transport', scalar: 'lossless_bundled_survey_transport', coordinate: 'lossless_packed_coordinate_transport'}[candidateKind], source_build_id: source.build_id,
+  operation: candidateEncoding === PACKED_FAMILY_ENCODING ? 'lossless_packed_family_transport'
+    : {family: 'lossless_bundled_family_transport', scalar: 'lossless_bundled_survey_transport', coordinate: 'lossless_packed_coordinate_transport'}[candidateKind], source_build_id: source.build_id,
   source_manifest_sha256: sha256(sourceBytes), [`${candidateKind}_candidate_sha256`]: sha256(candidateBytes),
   [`${candidateKind}_encoding`]: candidateEncoding,
   code_sha256: Object.fromEntries(await Promise.all([
     './repack_bundled_release.mjs', './output_scope.mjs', './verify_release_inventory.mjs',
-    '../core/survey-codec.js', '../core/bundled-survey-codec.js', '../core/bundled-family-codec.js', '../core/shared-survey-codec.js', '../core/packed-coordinate-codec.js',
+    '../core/survey-codec.js', '../core/bundled-survey-codec.js', '../core/bundled-family-codec.js', '../core/shared-survey-codec.js', '../core/packed-coordinate-codec.js', '../core/packed-family-codec.js',
   ].map(async file => [file, sha256(await readFile(new URL(file, import.meta.url)))]))),
   note: 'Storage transformation only. Scientific rows and source selection are unchanged; source stage history is retained separately.',
 };

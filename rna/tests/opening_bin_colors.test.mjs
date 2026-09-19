@@ -45,12 +45,15 @@ test('actual filtered populations keep stable colors and exact scientific export
   }
 });
 
-test('ordinary groups retain original index palette even with opening-like names', () => {
+test('ordinary groups retain original order and semantic colors with opening-like names', () => {
   const result = resultFor(['large', 'small', 'middle']);
   result.displaySpec.groupBy = 'base';
   const traces = distributionTraces(result);
   assert.deepEqual(traces.map(trace => trace.name.split(' ')[0]), ['large', 'small', 'middle']);
-  assert.deepEqual(traces.map(trace => trace.line.color), ['#174a7e', '#8c3b2a', '#146c43']);
+  for (let index = 0; index < result.series.length; index++) {
+    const isolated = { ...result, series: [result.series[index]] };
+    assert.equal(traces[index].line.color, distributionTraces(isolated)[0].line.color);
+  }
 });
 
 test('unknown opening groups remain visible after canonical bins', () => {

@@ -1,9 +1,9 @@
 import { wrapCircular } from '../math/numeric.js';
+import { seriesColor } from './series-colors.js';
 import { RNA_CONTROL_HELP } from '../config/control-help.js';
 import { displayStatisticValue } from './statistic-display.js';
 import { plotAxisSpec } from '../core/axis-layout.js';
 
-const COLORS = ['#174a7e', '#8c3b2a', '#146c43', '#8659a1', '#be882e', '#32898c', '#ae567e', '#6a6256'];
 // DNA Base Geometry Survey semantics: identity, not surviving series index.
 const OPENING_BIN_STYLES = Object.freeze({
   small: Object.freeze({ order: 0, color: '#174a7e' }),
@@ -156,10 +156,11 @@ export function distributionTraces(result, display = {}) {
   const normalization = result.displaySpec?.normalization ?? display.normalization;
   const intensity = normalization === 'density' ? 'Probability density (smoothed)' : 'Probability (smoothed)';
   const periodic = Number.isFinite(parameter.period) && parameter.period > 0;
-  const openingBins = (result.displaySpec?.groupBy ?? display.groupBy) === 'opening_bin';
-  const styled = (result.series ?? []).map((series, index) => {
+  const grouping = result.displaySpec?.groupBy ?? display.groupBy ?? 'base';
+  const openingBins = grouping === 'opening_bin';
+  const styled = (result.series ?? []).map(series => {
     const style = openingBins ? OPENING_BIN_STYLES[series.key] : null;
-    return { series, color: style?.color ?? COLORS[index % COLORS.length], order: style?.order ?? 3 };
+    return { series, color: style?.color ?? seriesColor(series.key, grouping), order: style?.order ?? 3 };
   });
   if (openingBins) styled.sort((a, b) => a.order - b.order);
   return styled.map(({ series, color }) => ({

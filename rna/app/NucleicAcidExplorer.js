@@ -13,6 +13,15 @@ export class NucleicAcidExplorer {
   status(message, state = 'loading') { const node = this.$('appStatus'); node.textContent = message; node.dataset.state = state; }
   capture() { return { revision: ++this.revision, state: structuredClone(this.state) }; }
   current(revision) { return !this.disposed && revision === this.revision; }
+  async checkpoint(revision) {
+    if (!this.current(revision)) return false;
+    // Yield a task, not merely a resolved promise: input can capture a newer
+    // revision even when all repository reads were already cached.
+    // scheduler.yield() can boost its continuation ahead of pending ordinary
+    // tasks. A timer boundary also gives previously queued timer input a turn.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return this.current(revision);
+  }
   async commit(revision, callback) {
     const operation = this.commitQueue.catch(() => {}).then(async () => {
       if (!this.current(revision)) return false;

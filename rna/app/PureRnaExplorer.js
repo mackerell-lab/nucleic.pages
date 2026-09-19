@@ -350,11 +350,13 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.status('Updating RNA measurements…');
     for (const id of ['filteredCsvDownload', 'plotProvenanceDownload', 'jointCsvDownload', 'surveyCsvDownload']) this.$(id).disabled = true;
     const family = await this.repository.loadFamily(state.familyId);
-    if (!this.current(revision)) return;
+    if (!await this.checkpoint(revision)) return;
     const parameter = this.parameter(state.familyId, state.parameterId);
     const selection = selectRows(family, this.metadata, state.selection);
+    if (!await this.checkpoint(revision)) return;
     const display = this.displaySpec(state.display, parameter);
     const result = this.decorate(distribution(selection.rows, parameter, display));
+    if (!await this.checkpoint(revision)) return;
     const snapshot = this.snapshot({ result, selectionSpec: state.selection, displaySpec: display, buildId: this.manifest.build_id, parameter, familyId: state.familyId, revision });
     await this.commit(revision, async () => {
       await this.plot(this.$('plot'), distributionTraces(result, display), distributionLayout(result, display.normalization));
@@ -453,7 +455,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     for (const plot of container.querySelectorAll('.rna-mini-plot')) this.plotly?.purge(plot);
     container.replaceChildren();
     for (const parameter of this.parameters(state.familyId)) {
-      if (!this.current(revision)) return;
+      if (!await this.checkpoint(revision)) return;
       const result = distribution(rows, parameter, { ...this.displaySpec(state.display, parameter), groupBy: 'none' });
       const card = element('button', { type: 'button', className: `card rna-overview-button${parameter.id === state.parameterId ? ' active' : ''}`, 'data-parameter': parameter.id, 'aria-pressed': String(parameter.id === state.parameterId) });
       card.append(element('h3', {}, parameter.label ?? parameter.id));
@@ -472,35 +474,46 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   }
 
   async renderJoint(state, revision, leftSelection) {
+    if (!this.current(revision)) return;
     this.updateJointResidueControls(null, state);
     if (!state.family2Id || !state.parameter2Id) {
       await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, 'Select a second parameter above to generate a joint distribution.')); this.$('jointStats').replaceChildren(); this.$('jointCsvDownload').disabled = true; this.snapshots.joint = null; this.completedJointKey = null; });
       return;
     }
     const rightTable = await this.repository.loadFamily(state.family2Id);
-    if (!this.current(revision)) return;
+    if (!await this.checkpoint(revision)) return;
     const xParameter = this.parameter(state.familyId, state.parameterId); const yParameter = this.parameter(state.family2Id, state.parameter2Id);
     const specs = jointSelectionSpecs(state.selection, state.joint, xParameter.level, yParameter.level);
     if (!specs.valid) {
       await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, specs.message)); this.$('jointStats').replaceChildren(); this.$('jointNote').textContent = specs.message; this.snapshots.joint = null; this.completedJointKey = null; this.$('jointCsvDownload').disabled = true; });
       return;
     }
-    if (specs.left !== state.selection) leftSelection = selectRows(await this.repository.loadFamily(state.familyId), this.metadata, specs.left);
+    if (specs.left !== state.selection) {
+      const leftTable = await this.repository.loadFamily(state.familyId);
+      if (!this.current(revision)) return;
+      leftSelection = selectRows(leftTable, this.metadata, specs.left);
+    }
     if (!this.current(revision)) return;
     // Same-family identity axes share the captured selection, including row
     // order and annotations. Endpoint-specific filters must remain independent.
     const rightSelection = state.familyId === state.family2Id && specs.left === specs.right
       ? leftSelection : selectRows(rightTable, this.metadata, specs.right);
-    this.updateJointResidueControls(yParameter.level === 'residue' ? rightTable : xParameter.level === 'residue' ? await this.repository.loadFamily(state.familyId) : null, state);
+    const residueTable = yParameter.level === 'residue' ? rightTable
+      : xParameter.level === 'residue' ? await this.repository.loadFamily(state.familyId) : null;
+    if (!this.current(revision)) return;
+    this.updateJointResidueControls(residueTable, state);
     let relations = [];
     if (state.joint.mode === 'relation') {
       const relationKey = Object.keys(this.manifest.relations ?? {}).find(key => /pair.*residue|endpoint/.test(key)) ?? (this.manifest.relations?.observations ? 'observations' : null);
       if (!relationKey) { await this.commit(revision, () => { this.plotly?.purge(this.$('jointPlot')); this.$('jointPlot').replaceChildren(element('div', { className: 'empty-state' }, 'This release has no validated pair-to-residue relation table.')); this.$('jointStats').replaceChildren(); this.snapshots.joint = null; this.completedJointKey = null; this.$('jointCsvDownload').disabled = true; }); return; }
       relations = rowsOf(await this.repository.loadRelations(relationKey));
     }
+    if (!await this.checkpoint(revision)) return;
     const endpoint = { nt1: 'first', nt2: 'second' }[state.joint.endpoint] ?? state.joint.endpoint;
     const joined = join(leftSelection.rows, rightSelection.rows, { type: state.joint.mode, relations, endpoint, xParameter, yParameter, x: xParameter.id, y: yParameter.id });
+    if (!await this.checkpoint(revision)) return;
     const result = histogram2D(joined.points, xParameter, yParameter, { ...state.display, bins: state.display.fine ? 72 : 36 });
+    if (!await this.checkpoint(revision)) return;
     await this.renderJointResult(result, state, revision, { join_diagnostics: joined.diagnostics, axis_selections: { x: specs.left, y: specs.right } });
   }
 
@@ -585,7 +598,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         await this.renderJointResult(previous.result, request.state, request.revision, previous.provenance, previous);
       } else {
         const family = await this.repository.loadFamily(request.state.familyId);
-        if (!this.current(request.revision)) return;
+        if (!await this.checkpoint(request.revision)) return;
         const selection = selectRows(family, this.metadata, request.state.selection);
         await this.renderJoint(request.state, request.revision, selection);
       }
@@ -612,7 +625,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const term = available.find(item => item.id === state.survey.termId) ?? available[0];
     if (!term) { await this.commit(revision, () => { this.$('surveyDefinition').textContent = 'No survey terms are available for this group.'; }); return; }
     const table = await this.repository.loadSurveyScalars(term.id);
-    if (!this.current(revision)) return;
+    if (!await this.checkpoint(revision)) return;
     const normalized = this.surveyRows(table, term);
     const selection = selectRows({ rows: normalized }, this.metadata, { ...state.selection, contexts: state.survey.contexts ?? [] });
     const parameter = normalizeParameter(term);
@@ -622,8 +635,10 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     if (!this.current(revision)) return;
     if (parameter.level === 'pair') termRows = termRows.filter(row => openingIndex.pairs.has(row.pair_id));
     if (state.survey.opening === 'bins') termRows = this.openingIncidences(termRows, openingIndex);
+    if (!await this.checkpoint(revision)) return;
     const display = { ...this.displaySpec(state.display, parameter), groupBy: state.survey.opening === 'bins' ? 'opening_bin' : state.display.groupBy };
     const result = this.decorate(distribution(termRows, parameter, display));
+    if (!await this.checkpoint(revision)) return;
     const snapshot = this.snapshot({ result, selectionSpec: { ...state.selection, contexts: state.survey.contexts ?? [] }, buildId: this.manifest.build_id, displaySpec: display, provenance: { survey_term: term.id, survey_contexts: state.survey.contexts ?? [], opening_conditioning: state.survey.opening, opening_bins: this.manifest.survey.opening_bins, incidence_policy: state.survey.opening === 'bins' ? 'one row per explicit residue-pair incidence' : 'one row per residue or pair observable' } });
     await this.commit(revision, async () => {
       await this.plot(this.$('baseGeometryPlot'), distributionTraces(result, state.display), distributionLayout(result, state.display.normalization));
@@ -707,6 +722,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     return result;
   }
   async renderOpeningRanking(terms, state, revision, openingIndex) {
+    if (!this.current(revision)) return;
     const owner = {};
     this.rankingOwner = owner;
     const ranks = []; this.$('surveyRankingLoad').disabled = true;
@@ -724,11 +740,17 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         const table = term.id === this.lastSurveyTerm
           ? await this.repository.loadSurveyScalars(term.id)
           : await this.repository.loadSurveyScalars(term.id, { fields: SURVEY_RANKING_FIELDS });
-        const selected = selectRows(this.surveyRows(table, term), this.metadata, { ...state.selection, contexts: state.survey.contexts ?? [] });
-        const incidences = this.openingIncidences(selected.rows, openingIndex);
-        const termRanks = rankSurveyContexts(incidences, term);
-        ranks.push(...termRanks); cached.set(term.id, termRanks);
-        if (term.id !== this.lastSurveyTerm) this.repository.releaseSurvey?.('scalars', term.id);
+        try {
+          if (!await this.checkpoint(revision)) return;
+          const selected = selectRows(this.surveyRows(table, term), this.metadata, { ...state.selection, contexts: state.survey.contexts ?? [] });
+          const incidences = this.openingIncidences(selected.rows, openingIndex);
+          const termRanks = rankSurveyContexts(incidences, term);
+          ranks.push(...termRanks); cached.set(term.id, termRanks);
+        } finally {
+          // Cancellation and failed analysis must release transient decoded
+          // tables too. A newer Survey plot may now own this same term.
+          if (term.id !== this.lastSurveyTerm) this.repository.releaseSurvey?.('scalars', term.id);
+        }
         if (!this.current(revision)) return;
         this.$('surveyRankingLoad').textContent = `Computing ${index + 1} / ${terms.length}…`;
       }

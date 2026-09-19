@@ -21,13 +21,15 @@ test('Cancelled overview is never reused as a completed overview', async () => {
   const node = () => ({ setAttribute() {}, append() {}, addEventListener() {} });
   globalThis.document = { createElement: node };
   try {
-    let rebuilds = 0, finish;
+    let rebuilds = 0, finish, entered;
+    const plotEntered = new Promise(resolve => { entered = resolve; });
     const container = { querySelectorAll: () => [], replaceChildren() { rebuilds++; }, append() {} };
     const app = new PureRnaExplorer({ root: { querySelector: () => container }, repository: {} });
     app.parameters = () => [{ id: 'alpha', period: 360 }];
-    app.plot = () => new Promise(resolve => { finish = resolve; });
+    app.plot = () => new Promise(resolve => { finish = resolve; entered(); });
     const state = { familyId: 'backbone', parameterId: 'alpha', selection: {}, display: {} };
     const pending = app.renderFamilyOverview([], state, 0);
+    await plotEntered;
     app.capture(); finish(); await pending;
     assert.equal(app.overviewKey, null);
     app.plot = async () => {};

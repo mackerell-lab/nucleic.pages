@@ -1,6 +1,6 @@
 import { NucleicAcidExplorer } from './NucleicAcidExplorer.js';
 import { familyParameters, parameterValue, normalizeParameter } from '../core/registry.js';
-import { selectRows, methodKey } from '../core/selection.js';
+import { selectRows } from '../core/selection.js';
 import { distribution, histogram2D } from '../core/analysis.js';
 import { join } from '../core/joints.js';
 import { jointSelectionSpecs } from '../core/joint-selection.js';
@@ -17,6 +17,7 @@ import { coordinateLayout } from '../views/coordinate-layout.js';
 import { coordinateTraces } from '../views/coordinate-traces.js';
 import { jointContourConfig } from '../core/contours.js';
 import { surveyRankingDisplay } from '../views/survey-ranking.js';
+import { universeSummary, appendUniverseInventory } from '../views/universe-summary.js';
 
 const choices = pairs => pairs.map(([id, label]) => ({ id, label }));
 const rowsOf = table => Array.isArray(table) ? table : table?.rows ?? [];
@@ -231,20 +232,18 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   }
 
   renderUniverse() {
-    const methods = Object.fromEntries(['xray', 'nmr', 'em', 'other'].map(method => [method, this.entries.filter(entry => [entry.method, ...(entry.methods ?? [])].some(value => methodKey(value) === method)).length]));
-    const rows = this.families.reduce((total, family) => total + (family.row_count ?? 0), 0);
-    const annotationKeys = ['functions', 'function_tags', 'structures', 'structural_tags', 'subtypes', 'rna_types', 'annotation_tags'];
-    const hasAnnotation = row => annotationKeys.some(key => labels(row?.[key]).length > 0);
-    const annotated = this.entries.filter(entry => hasAnnotation(entry) || this.entryEntities(entry).some(hasAnnotation)).length;
+    const inventory = universeSummary(this.entries, this.metadata.entities ?? [], this.families);
+    const methods = inventory.methods;
     const partial = this.manifest.partial ?? this.manifest.subset ?? this.manifest.release_status === 'partial';
-    const description = `${number(this.entries.length)} canonical pure-RNA PDB entries in ${partial ? 'this explicitly bounded dataset' : 'this dataset'}. Full declared RNA sequences use A/C/G/U; protein, DNA, hybrid, and noncanonical polymers are excluded. ${this.manifest.generated_at ? `Generated ${this.manifest.generated_at.slice(0, 10)}.` : ''}`;
+    const description = `${number(inventory.entries)} canonical pure-RNA PDB entries in ${partial ? 'this explicitly bounded dataset' : 'this dataset'}. Full declared RNA sequences use A/C/G/U; protein, DNA, hybrid, and noncanonical polymers are excluded. ${this.manifest.generated_at ? `Generated ${this.manifest.generated_at.slice(0, 10)}.` : ''}`;
     this.$('universeDescription').textContent = description;
     cards(this.$('overviewCards'), [
-      { title: `${number(this.entries.length)} PDB entries`, kind: partial ? 'Subset release' : 'Canonical RNA', detail: 'Full declared sequence determines canonical eligibility.', metrics: [['Families', this.families.length], ['Stored family rows', rows]] },
-      { title: 'Experimental Methods', kind: 'Archive metadata', metrics: [['X-ray', methods.xray], ['NMR', methods.nmr], ['EM', methods.em], ['Other', methods.other]] },
-      { title: 'RNA Annotation Coverage', kind: 'NAKB', detail: 'Functions can overlap. Unknown remains in the default population.', metrics: [['Annotated entries', annotated], ['Unknown', this.entries.length - annotated]] },
+      { title: `${number(inventory.entries)} PDB entries`, kind: partial ? 'Subset release' : 'Canonical RNA', detail: 'Full declared sequence determines canonical eligibility. Family totals include repeated observations across families.', metrics: [['Families', this.families.length], ['Stored family rows', inventory.familyRows ?? 'Unavailable']] },
+      { title: 'Experimental Methods', kind: 'Archive metadata', detail: 'An entry with several recorded methods can appear in more than one count.', metrics: [['X-ray', methods.xray], ['NMR', methods.nmr], ['EM', methods.em], ['Other', methods.other]] },
+      { title: 'RNA Annotation Coverage', kind: 'NAKB', detail: 'Entries have at least one RNA entity with a recorded function, type or structure tag. Annotations can overlap; unknown entities do not inherit other entity tags.', metrics: [['Annotated PDB entries', inventory.annotatedEntries], ['Entries without annotated RNA entities', inventory.entries - inventory.annotatedEntries], ['Annotated RNA entities', inventory.annotatedEntities], ['RNA entities', inventory.entities]] },
       { title: 'A · C · G · U', kind: 'RNA chemistry', detail: 'Uracil remains U. Ribose O2′ and missing atoms receive explicit atom-level treatment.', metrics: [['Default profile', 'Inorganic-like'], ['Default resolution', 'X-ray ≤ 3.0 Å']] },
     ]);
+    appendUniverseInventory(this.$('overviewCards'), inventory);
     cards(this.$('annotationCards'), [
       { title: 'Function & Structure', detail: 'Riboswitch, ribozyme, tRNA, aptamer, and structural annotations select their recorded entity scope. Multiple labels may describe one RNA.' },
       { title: 'Local Conformation', detail: 'Glycosidic torsion, ribose pucker, and backbone angles describe local geometry. Each parameter reports its supported atoms and neighbors.' },

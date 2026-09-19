@@ -41,17 +41,25 @@ try {
   assert(rows.some(row => row.text.toLowerCase().includes(probe.value.toLowerCase())), 'Matching annotation was not rendered in the table');
   const coverage = await page.evaluate(() => {
     const app = window.rnaExplorer;
-    const keys = ['functions', 'function_tags', 'structures', 'structural_tags', 'subtypes', 'rna_types', 'annotation_tags'];
-    const has = row => keys.some(key => {
-      const value = row?.[key];
-      return (Array.isArray(value) ? value : value == null ? [] : [value]).length > 0;
-    });
-    const expected = app.entries.filter(entry => has(entry) || app.entryEntities(entry).some(has)).length;
+    const universe = new Set(app.entries.map(entry => String(entry.pdb_id ?? entry.entry_id ?? '').toUpperCase()));
+    const annotatedEntries = new Set(), annotatedEntities = new Set();
+    for (const entity of app.metadata.entities ?? []) {
+      const pdb = String(entity.pdb_id ?? entity.entry_id ?? '').toUpperCase();
+      if (!universe.has(pdb) || entity.type !== 'polymer' || entity.polymer_type !== 'polyribonucleotide') continue;
+      // The card counts recorded RNA entity annotations, never entry-wide tags
+      // inherited onto an explicitly unannotated entity.
+      const annotated = ['functions', 'subtypes', 'structures'].some(key => Array.isArray(entity[key]) && entity[key].length > 0);
+      if (!annotated) continue;
+      annotatedEntries.add(pdb); annotatedEntities.add(JSON.stringify([pdb, String(entity.entity_id)]));
+    }
     const card = [...document.querySelectorAll('#overviewCards .card')].find(node => node.querySelector('h3')?.textContent === 'RNA Annotation Coverage');
-    const metric = [...(card?.querySelectorAll('.metric') ?? [])].find(node => node.querySelector('.metric-label')?.textContent === 'Annotated entries');
-    return { expected, actual: Number(metric?.querySelector('.metric-value')?.textContent.replaceAll(',', '')) };
+    const metric = label => [...(card?.querySelectorAll('.metric') ?? [])].find(node => node.querySelector('.metric-label')?.textContent === label);
+    const value = label => Number(metric(label)?.querySelector('.metric-value')?.textContent.replaceAll(',', ''));
+    return { expected: annotatedEntries.size, actual: value('Annotated PDB entries'),
+      expectedEntities: annotatedEntities.size, actualEntities: value('Annotated RNA entities') };
   });
-  assert.equal(coverage.actual, coverage.expected, 'Annotation coverage omitted non-function NAKB fields');
+  assert.equal(coverage.actual, coverage.expected, 'Recorded entity coverage disagrees with distinct annotated PDB entries');
+  assert.equal(coverage.actualEntities, coverage.expectedEntities, 'Recorded entity coverage disagrees with distinct annotated RNA entities');
   assert.deepEqual(report.errors, []);
   report.checks.push({ name: 'Entity annotation search and rendering', ...probe, coverage });
   report.passed = true;

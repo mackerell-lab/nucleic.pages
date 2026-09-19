@@ -13,6 +13,7 @@ import { annotationLabel } from '../views/labels.js';
 import { JOINT_PALETTE_OPTIONS, jointColorscale } from '../views/palettes.js';
 import { wrapCircular } from '../math/numeric.js';
 import { coordinateLayout } from '../views/coordinate-layout.js';
+import { coordinateTraces } from '../views/coordinate-traces.js';
 import { jointContourConfig } from '../core/contours.js';
 
 const choices = pairs => pairs.map(([id, label]) => ({ id, label }));
@@ -39,7 +40,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       selection: structuredClone(DEFAULT_SELECTION), display: structuredClone(DEFAULT_DISPLAY),
       familyId: '', parameterId: 'chi', family2Id: '', parameter2Id: '',
       joint: structuredClone(DEFAULT_JOINT),
-      survey: { loaded: false, group: 'all', contexts: [], termId: '', opening: 'all', ranking: false, minimum: 20, coordinatesLoaded: false, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all' },
+      survey: { loaded: false, group: 'all', contexts: [], termId: '', opening: 'all', ranking: false, minimum: 20, coordinatesLoaded: false, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all', coordinateLabels: 'all' },
     };
     this.pages = { universe: 0, filtered: 0 }; this.filteredEntries = []; this.contributing = new Set();
     this.rankingCache = new Map();
@@ -191,6 +192,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.listen(this.$('coordinateContextSelect'), 'change', event => { this.state.survey.coordinateContext = event.target.value; this.requestRender(); });
     this.listen(this.$('coordinateGroupSelect'), 'change', event => { this.state.survey.coordinateGroup = event.target.value; this.state.survey.coordinateContext = 'all'; this.requestRender(); });
     this.listen(this.$('coordinateOpeningSelect'), 'change', event => { this.state.survey.coordinateOpening = event.target.value; this.requestRender(); });
+    this.listen(this.$('coordinateLabelsSelect'), 'change', event => this.setCoordinateLabels(event.target.value));
     this.listen(this.$('surveyOpeningSelect'), 'change', event => { this.state.survey.opening = event.target.value; this.requestRender(); });
     this.listen(this.$('surveyRankingLoad'), 'click', () => { this.state.survey.ranking = true; this.requestRender(); });
     this.renderSurveyRankingControls();
@@ -209,7 +211,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.state.family2Id = ''; this.state.parameter2Id = '';
     const surveyLoaded = this.state.survey.loaded, coordinatesLoaded = this.state.survey.coordinatesLoaded;
     this.state.survey = { loaded: surveyLoaded, group: 'all', contexts: [], termId: '', opening: 'all', ranking: false, minimum: 20,
-      coordinatesLoaded, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all' };
+      coordinatesLoaded, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all', coordinateLabels: 'all' };
     this.surveyRanks = [];
     this.rankingOwner = null;
     this.$('surveyRankingLoad').disabled = false;
@@ -492,6 +494,10 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       if (!this.current(request.revision)) return;
       const selection = selectRows(family, this.metadata, request.state.selection);
       await this.renderJoint(request.state, request.revision, selection);
+      if (this.current(request.revision) && this.completedCoordinateKey
+          && this.completedCoordinateLabels !== this.state.survey.coordinateLabels) {
+        await this.commit(request.revision, () => this.renderCoordinatePlot(this.coordinateSummary, request.revision, this.completedCoordinateKey));
+      }
       if (this.current(request.revision)) this.status('', 'ready');
     } catch (error) {
       if (this.current(request.revision)) { this.status(error.message, 'error'); console.error(error); }
@@ -633,7 +639,12 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     if (!this.current(revision)) return;
     const coordinateKey = JSON.stringify({ build: this.manifest.build_id, group,
       selection: state.selection, context: state.survey.coordinateContext, opening: state.survey.coordinateOpening });
-    if (this.completedCoordinateKey === coordinateKey) return;
+    if (this.completedCoordinateKey === coordinateKey) {
+      if (this.completedCoordinateLabels !== this.state.survey.coordinateLabels) {
+        await this.commit(revision, () => this.renderCoordinatePlot(this.coordinateSummary, revision, coordinateKey));
+      }
+      return;
+    }
     this.completedCoordinateKey = null;
     const eligible = selectRows([], this.metadata, state.selection).entryIds;
     const eligiblePairs = group?.includes('cytosine_standard_pair') ? (await this.openingIndex(state)).pairs : null;
@@ -656,7 +667,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const contexts = [...contextSet].sort();
     const averages = accumulator.results();
     await this.commit(revision, async () => {
-      await this.plot(this.$('coordinatePlot'), [{ type: 'scatter3d', mode: 'markers+text', x: averages.map(row => row.mean[0]), y: averages.map(row => row.mean[1]), z: averages.map(row => row.mean[2]), text: averages.map(row => row.atom), marker: { size: 5, color: '#174a7e' }, textposition: 'top center' }], coordinateLayout(averages));
+      await this.renderCoordinatePlot(averages, revision, coordinateKey);
       if (!this.current(revision)) return;
       options(this.$('coordinateGroupSelect'), groupChoices.map(id => ({ id, label: id.replace('cytosine_standard_pair', 'Cytosine standard pair frame').replace('rna_standard_base', 'RNA standard base frame').replaceAll('_', ' ') })), group);
       this.state.survey.coordinateGroup = group;
@@ -672,12 +683,40 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       }
       options(this.$('coordinateContextSelect'), [{ id: 'all', label: 'All recorded contexts' }, ...contextChoices], state.survey.coordinateContext);
       const precise = value => Number.isFinite(value) ? value.toFixed(4) : '—';
-      this.$('baseGeometryCoordBody').replaceChildren(...averages.map(item => { const row = element('tr'); row.append(...[item.atom, number(item.n), number(item.residues), item.pairs === null ? 'Not applicable' : number(item.pairs), number(item.entries), ...item.mean.map(precise), precise(item.rms)].map(value => element('td', {}, value))); return row; }));
-      if (!averages.length) { const row = element('tr'); row.append(element('td', { colspan: '9' }, 'No coordinate observations match the current filters.')); this.$('baseGeometryCoordBody').append(row); }
+      this.$('baseGeometryCoordBody').replaceChildren(...averages.map(item => { const row = element('tr'); row.append(...[item.context || 'Unspecified', item.atom_label, number(item.n), number(item.residues), item.pairs === null ? 'Not applicable' : number(item.pairs), number(item.entries), ...item.mean.map(precise), precise(item.rms)].map(value => element('td', {}, value))); return row; }));
+      if (!averages.length) { const row = element('tr'); row.append(element('td', { colspan: '10' }, 'No coordinate observations match the current filters.')); this.$('baseGeometryCoordBody').append(row); }
       this.completedCoordinateKey = coordinateKey;
     });
     if (this.lastCoordinateGroup && this.lastCoordinateGroup !== group) this.repository.releaseSurvey?.('coordinates', this.lastCoordinateGroup);
     this.lastCoordinateGroup = group;
+  }
+
+  async setCoordinateLabels(labels) {
+    this.state.survey.coordinateLabels = labels;
+    if (this.$('appStatus').dataset.state === 'error') return this.requestRender();
+    // An in-flight population render reads the latest label choice at commit.
+    if (this.$('appStatus').dataset.state !== 'ready' || !this.completedCoordinateKey) return;
+    const revision = this.revision;
+    try {
+      await this.commit(revision, () => this.renderCoordinatePlot(this.coordinateSummary, revision, this.completedCoordinateKey));
+    } catch (error) {
+      if (this.current(revision)) { this.status(error.message, 'error'); console.error(error); }
+    }
+  }
+
+  async renderCoordinatePlot(averages, revision, coordinateKey) {
+    const layout = coordinateLayout(averages);
+    layout.scene.uirevision = coordinateKey;
+    let labels;
+    do {
+      labels = this.state.survey.coordinateLabels ?? 'all';
+      const camera = this.$('coordinatePlot')._fullLayout?.scene?.camera;
+      if (camera && this.completedCoordinateKey === coordinateKey) layout.scene.camera = structuredClone(camera);
+      await this.plot(this.$('coordinatePlot'), coordinateTraces(averages, labels), layout);
+      if (!this.current(revision)) return;
+    } while (labels !== (this.state.survey.coordinateLabels ?? 'all'));
+    this.$('coordinateLabelsSelect').value = labels;
+    this.completedCoordinateLabels = labels;
   }
 
   exportSnapshot(key) {

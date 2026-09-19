@@ -339,13 +339,25 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   }
 
   async renderFamilyOverview(rows, state, revision) {
+    if (!this.current(revision)) return;
     const container = this.$('familyOverview');
+    const key = JSON.stringify({ build: this.manifest?.build_id, family: state.familyId,
+      selection: state.selection, display: state.display, rowCount: rows.length });
+    if (this.overviewKey === key) {
+      for (const card of container.querySelectorAll('[data-parameter]')) {
+        const selected = card.dataset.parameter === state.parameterId;
+        card.classList.toggle('active', selected);
+        card.setAttribute('aria-pressed', String(selected));
+      }
+      return;
+    }
+    this.overviewKey = null;
     for (const plot of container.querySelectorAll('.rna-mini-plot')) this.plotly?.purge(plot);
     container.replaceChildren();
     for (const parameter of this.parameters(state.familyId)) {
       if (!this.current(revision)) return;
       const result = distribution(rows, parameter, { ...this.displaySpec(state.display, parameter), groupBy: 'none' });
-      const card = element('button', { type: 'button', className: `card rna-overview-button${parameter.id === state.parameterId ? ' active' : ''}`, 'data-parameter': parameter.id });
+      const card = element('button', { type: 'button', className: `card rna-overview-button${parameter.id === state.parameterId ? ' active' : ''}`, 'data-parameter': parameter.id, 'aria-pressed': String(parameter.id === state.parameterId) });
       card.append(element('h3', {}, parameter.label ?? parameter.id));
       const finite = rows.filter(row => parameterValue(row, parameter) !== null).length;
       card.append(element('p', { className: 'meta' }, `${number(finite)} / ${number(rows.length)} finite`));
@@ -353,6 +365,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       card.addEventListener('click', () => { this.state.parameterId = parameter.id; this.$('parameterSelect').value = parameter.id; this.requestRender(); });
       await this.plot(plot, distributionTraces(result, { traceStyle: 'line' }), plotLayout(parameter, state.display.normalization, { height: 150, margin: { l: 30, r: 8, t: 4, b: 30 }, showlegend: false, xaxis: { title: '', tickfont: { size: 10 } }, yaxis: { title: '', tickfont: { size: 10 } } }));
     }
+    if (this.current(revision)) this.overviewKey = key;
   }
 
   async renderJoint(state, revision, leftSelection) {

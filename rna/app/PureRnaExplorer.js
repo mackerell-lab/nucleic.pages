@@ -330,7 +330,9 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   }
 
   async renderFamilyOverview(rows, state, revision) {
-    const container = this.$('familyOverview'); container.replaceChildren();
+    const container = this.$('familyOverview');
+    for (const plot of container.querySelectorAll('.rna-mini-plot')) this.plotly?.purge(plot);
+    container.replaceChildren();
     for (const parameter of this.parameters(state.familyId)) {
       if (!this.current(revision)) return;
       const result = distribution(rows, parameter, { ...this.displaySpec(state.display, parameter), groupBy: 'none' });

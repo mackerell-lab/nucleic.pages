@@ -217,6 +217,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.state.survey = { loaded: surveyLoaded, group: 'all', contexts: [], termId: '', opening: 'all', ranking: false, minimum: 20,
       coordinatesLoaded, coordinateGroup: '', coordinateContext: 'all', coordinateOpening: 'all', coordinateLabels: 'all' };
     this.surveyRanks = [];
+    this.setRankingCounts('not_computed');
     this.rankingOwner = null;
     this.$('surveyRankingLoad').disabled = false;
     this.$('surveyRankingLoad').textContent = 'Compute term ranking';
@@ -582,6 +583,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     this.fullRenderOwner = owner;
     this.fullRenderComplete = false;
     const request = this.capture();
+    if (request.state.survey.loaded) this.setRankingCounts(request.state.survey.ranking ? 'computing' : 'not_computed');
     try {
       await this.render(request);
       if (this.current(request.revision)) {
@@ -590,7 +592,10 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         this.completedTraceKey = this.traceAnalysisKey(this.state);
       }
     } catch (error) {
-      if (this.current(request.revision)) { this.status(error.message, 'error'); console.error(error); }
+      if (this.current(request.revision)) {
+        if (request.state.survey.loaded && request.state.survey.ranking) this.setRankingCounts('unavailable');
+        this.status(error.message, 'error'); console.error(error);
+      }
     } finally { if (this.fullRenderOwner === owner) this.fullRenderOwner = null; }
   }
 
@@ -632,70 +637,104 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
   }
 
   async renderSurvey(state, revision) {
-    const terms = this.surveyTerms();
-    const groups = [...new Set(terms.map(term => term.group))];
-    const available = terms.filter(term => state.survey.group === 'all' || term.group === state.survey.group);
-    const term = available.find(item => item.id === state.survey.termId) ?? available[0];
-    if (!term) { await this.commit(revision, () => { this.$('surveyDefinition').textContent = 'No survey terms are available for this group.'; }); return; }
-    const table = await this.repository.loadSurveyScalars(term.id);
-    if (!await this.checkpoint(revision)) return;
-    const normalized = this.surveyRows(table, term);
-    const selection = selectRows({ rows: normalized }, this.metadata, { ...state.selection, contexts: state.survey.contexts ?? [] });
-    const parameter = normalizeParameter(term);
-    let termRows = selection.rows.filter(row => (row.term_id ?? row.term) === term.id);
-    let openingIndex = null;
-    if (state.survey.opening === 'bins' || state.survey.ranking || parameter.level === 'pair') openingIndex = await this.openingIndex(state);
     if (!this.current(revision)) return;
-    if (parameter.level === 'pair') termRows = termRows.filter(row => openingIndex.pairs.has(row.pair_id));
-    if (state.survey.opening === 'bins') termRows = this.openingIncidences(termRows, openingIndex);
-    if (!await this.checkpoint(revision)) return;
-    const display = { ...this.displaySpec(state.display, parameter), groupBy: state.survey.opening === 'bins' ? 'opening_bin' : state.display.groupBy };
-    const result = this.decorate(distribution(termRows, parameter, display));
-    if (!await this.checkpoint(revision)) return;
-    const snapshot = await this.snapshot({ result, revision, selectionSpec: { ...state.selection, contexts: state.survey.contexts ?? [] }, buildId: this.manifest.build_id, displaySpec: display, provenance: { survey_term: term.id, survey_contexts: state.survey.contexts ?? [], opening_conditioning: state.survey.opening, opening_bins: this.manifest.survey.opening_bins, incidence_policy: state.survey.opening === 'bins' ? 'one row per explicit residue-pair incidence' : 'one row per residue or pair observable' } });
-    if (!this.current(revision)) return;
-    await this.commit(revision, async () => {
-      await this.plot(this.$('baseGeometryPlot'), distributionTraces(result, state.display), distributionLayout(result, state.display.normalization));
+    this.setRankingCounts(state.survey.ranking ? 'computing' : 'not_computed');
+    try {
+      const terms = this.surveyTerms();
+      const groups = [...new Set(terms.map(term => term.group))];
+      const available = terms.filter(term => state.survey.group === 'all' || term.group === state.survey.group);
+      const term = available.find(item => item.id === state.survey.termId) ?? available[0];
+      if (!term) {
+        await this.commit(revision, () => {
+          const message = 'No survey terms are available for this group.';
+          this.$('surveyDefinition').textContent = message;
+          this.plotly?.purge(this.$('baseGeometryPlot'));
+          this.$('baseGeometryPlot').replaceChildren(element('div', { className: 'empty-state' }, message));
+          this.snapshots.survey = null; this.$('surveyCsvDownload').disabled = true;
+          this.state.survey.termId = '';
+          const groupOptions = [{ id: 'all', label: 'All groups' }, ...groups.map(id => ({ id, label: annotationLabel(id) }))];
+          if (!groupOptions.some(item => item.id === state.survey.group)) groupOptions.push({ id: state.survey.group, label: `${annotationLabel(state.survey.group)} (no terms)` });
+          options(this.$('surveyGroupSelect'), groupOptions, state.survey.group);
+          options(this.$('baseGeometryTermSelect'), [{ id: '', label: 'No terms available' }], '');
+          this.$('baseGeometryTermSelect').disabled = true;
+          this.$('surveyContextControls').replaceChildren(); this.$('surveyCoverageBody').replaceChildren();
+          this.surveyRanks = []; this.rankingOwner = null;
+          this.setRankingCounts(state.survey.ranking ? 'computed' : 'not_computed', []);
+          stats(this.$('baseGeometryStats'), [['Filtered scalar rows', 0, 'baseGeometryScalarRows'], ['Survey terms', terms.length, 'baseGeometrySurveyTerms'], ['Computed term/context rows', this.rankingCountValue('rows'), 'baseGeometryRankRows'], ['Rows meeting every-bin minimum', this.rankingCountValue('sufficient'), 'baseGeometrySufficientRankRows'], ['Plotted term rows', 0, 'baseGeometrySelectedRows']]);
+          this.rankingCountsRendered = true;
+          const row = element('tr'); row.append(element('td', { colspan: '9' }, message));
+          this.$('baseGeometryRankingBody').replaceChildren(row);
+          this.$('surveyRankingLoad').disabled = false; this.$('surveyRankingLoad').textContent = 'Compute term ranking';
+          if (this.lastSurveyTerm) this.repository.releaseSurvey?.('scalars', this.lastSurveyTerm);
+          this.lastSurveyTerm = null;
+        });
+        return;
+      }
+      const table = await this.repository.loadSurveyScalars(term.id);
+      if (!await this.checkpoint(revision)) return;
+      const normalized = this.surveyRows(table, term);
+      const selection = selectRows({ rows: normalized }, this.metadata, { ...state.selection, contexts: state.survey.contexts ?? [] });
+      const parameter = normalizeParameter(term);
+      let termRows = selection.rows.filter(row => (row.term_id ?? row.term) === term.id);
+      let openingIndex = null;
+      if (state.survey.opening === 'bins' || state.survey.ranking || parameter.level === 'pair') openingIndex = await this.openingIndex(state);
       if (!this.current(revision)) return;
-      this.snapshots.survey = snapshot;
-      options(this.$('surveyGroupSelect'), [{ id: 'all', label: 'All groups' }, ...groups.map(id => ({ id, label: annotationLabel(id) }))], state.survey.group);
-      options(this.$('baseGeometryTermSelect'), available, term.id); this.state.survey.termId = term.id;
-      this.$('surveyContextControls').replaceChildren();
-      const recordedContexts = new Set(normalized.map(surveyContext));
-      const contexts = [...new Set([...recordedContexts, ...(state.survey.contexts ?? [])])].sort();
-      const contextControl = control(this.$('surveyContextControls'), { id: 'baseGeometryContextGroup', title: 'Survey Context', choices: contexts.map(id => ({ id, label: id })), selected: state.survey.contexts ?? [], multi: true, allLabel: 'All contexts',
-        onChange: contexts => {
-          if (!contextControl.isConnected) return;
-          // Old controls can remain visible after a different term/group fails.
-          // All contexts is always a safe retry; specific contexts belong to
-          // the scientific term that supplied this control, not its revision.
-          const currentTerm = this.state.survey.termId === term.id && this.state.survey.group === state.survey.group;
-          if (contexts.length && (!currentTerm || contexts.some(context => !recordedContexts.has(context)))) {
-            for (const button of contextControl.querySelectorAll('button[data-value]')) {
-              button.disabled = true; button.classList.remove('active'); button.setAttribute('aria-pressed', 'false');
+      if (parameter.level === 'pair') termRows = termRows.filter(row => openingIndex.pairs.has(row.pair_id));
+      if (state.survey.opening === 'bins') termRows = this.openingIncidences(termRows, openingIndex);
+      if (!await this.checkpoint(revision)) return;
+      const display = { ...this.displaySpec(state.display, parameter), groupBy: state.survey.opening === 'bins' ? 'opening_bin' : state.display.groupBy };
+      const result = this.decorate(distribution(termRows, parameter, display));
+      if (!await this.checkpoint(revision)) return;
+      const snapshot = await this.snapshot({ result, revision, selectionSpec: { ...state.selection, contexts: state.survey.contexts ?? [] }, buildId: this.manifest.build_id, displaySpec: display, provenance: { survey_term: term.id, survey_contexts: state.survey.contexts ?? [], opening_conditioning: state.survey.opening, opening_bins: this.manifest.survey.opening_bins, incidence_policy: state.survey.opening === 'bins' ? 'one row per explicit residue-pair incidence' : 'one row per residue or pair observable' } });
+      if (!this.current(revision)) return;
+      await this.commit(revision, async () => {
+        await this.plot(this.$('baseGeometryPlot'), distributionTraces(result, state.display), distributionLayout(result, state.display.normalization));
+        if (!this.current(revision)) return;
+        this.snapshots.survey = snapshot;
+        options(this.$('surveyGroupSelect'), [{ id: 'all', label: 'All groups' }, ...groups.map(id => ({ id, label: annotationLabel(id) }))], state.survey.group);
+        options(this.$('baseGeometryTermSelect'), available, term.id); this.state.survey.termId = term.id;
+        this.$('baseGeometryTermSelect').disabled = false;
+        this.$('surveyContextControls').replaceChildren();
+        const recordedContexts = new Set(normalized.map(surveyContext));
+        const contexts = [...new Set([...recordedContexts, ...(state.survey.contexts ?? [])])].sort();
+        const contextControl = control(this.$('surveyContextControls'), { id: 'baseGeometryContextGroup', title: 'Survey Context', choices: contexts.map(id => ({ id, label: id })), selected: state.survey.contexts ?? [], multi: true, allLabel: 'All contexts',
+          onChange: contexts => {
+            if (!contextControl.isConnected) return;
+            // Old controls can remain visible after a different term/group fails.
+            // All contexts is always a safe retry; specific contexts belong to
+            // the scientific term that supplied this control, not its revision.
+            const currentTerm = this.state.survey.termId === term.id && this.state.survey.group === state.survey.group;
+            if (contexts.length && (!currentTerm || contexts.some(context => !recordedContexts.has(context)))) {
+              for (const button of contextControl.querySelectorAll('button[data-value]')) {
+                button.disabled = true; button.classList.remove('active'); button.setAttribute('aria-pressed', 'false');
+              }
+              const all = contextControl.querySelector('button[data-all]');
+              const unfiltered = !(this.state.survey.contexts ?? []).length;
+              all.classList.toggle('active', unfiltered); all.setAttribute('aria-pressed', String(unfiltered));
+              return;
             }
-            const all = contextControl.querySelector('button[data-all]');
-            const unfiltered = !(this.state.survey.contexts ?? []).length;
-            all.classList.toggle('active', unfiltered); all.setAttribute('aria-pressed', String(unfiltered));
-            return;
-          }
-          this.state.survey.contexts = contexts; this.requestRender();
-        }, help: 'Independent survey context selection. All contexts includes all recorded contexts; global entry and annotation filters still apply.' });
-      this.$('surveyDefinition').textContent = this.definition(parameter);
-      stats(this.$('baseGeometryStats'), [['Filtered scalar rows', selection.rows.length, 'baseGeometryScalarRows'], ['Survey terms', terms.length, 'baseGeometryRankRows'], ['Plotted term rows', termRows.filter(row => parameterValue(row, parameter) !== null).length, 'baseGeometrySelectedRows']]);
-      this.$('surveyCoverageBody').replaceChildren(...available.map(item => {
-        const rows = item.id === term.id ? selection.rows : null; const finite = rows?.filter(row => parameterValue(row, item) !== null).length;
-        const row = element('tr'); const atoms = item.atoms ?? item.atom_pattern ?? '';
-        row.append(...[item.label, Array.isArray(atoms) ? atoms.join(' – ') : String(atoms), rows ? number(finite) : 'Load term', rows ? number(rows.length - finite) : 'Load term'].map(value => element('td', {}, value))); return row;
-      }));
-      this.$('surveyCsvDownload').disabled = false;
-      const bins = (this.manifest.survey.opening_bins ?? []).filter(bin => Number.isFinite(bin.min) && Number.isFinite(bin.max));
-      this.$('baseGeometryBinNote').textContent = bins.length ? bins.map(bin => `${bin.label ?? bin.id}: ${bin.include_min ? '[' : '('}${bin.min}, ${bin.max}${bin.include_max ? ']' : ')'}°`).join(' · ') + ' These are descriptive bins, not RNA conformation thresholds.' : 'This release does not declare opening-bin boundaries; conditioned comparisons are unavailable.';
-    });
-    if (!this.current(revision)) return;
-    if (this.lastSurveyTerm && this.lastSurveyTerm !== term.id) this.repository.releaseSurvey?.('scalars', this.lastSurveyTerm);
-    this.lastSurveyTerm = term.id;
-    if (state.survey.ranking && this.current(revision)) await this.renderOpeningRanking(available, state, revision, openingIndex);
+            this.state.survey.contexts = contexts; this.requestRender();
+          }, help: 'Independent survey context selection. All contexts includes all recorded contexts; global entry and annotation filters still apply.' });
+        this.$('surveyDefinition').textContent = this.definition(parameter);
+        stats(this.$('baseGeometryStats'), [['Filtered scalar rows', selection.rows.length, 'baseGeometryScalarRows'], ['Survey terms', terms.length, 'baseGeometrySurveyTerms'], ['Computed term/context rows', this.rankingCountValue('rows'), 'baseGeometryRankRows'], ['Rows meeting every-bin minimum', this.rankingCountValue('sufficient'), 'baseGeometrySufficientRankRows'], ['Plotted term rows', termRows.filter(row => parameterValue(row, parameter) !== null).length, 'baseGeometrySelectedRows']]);
+        this.rankingCountsRendered = true;
+        this.$('surveyCoverageBody').replaceChildren(...available.map(item => {
+          const rows = item.id === term.id ? selection.rows : null; const finite = rows?.filter(row => parameterValue(row, item) !== null).length;
+          const row = element('tr'); const atoms = item.atoms ?? item.atom_pattern ?? '';
+          row.append(...[item.label, Array.isArray(atoms) ? atoms.join(' – ') : String(atoms), rows ? number(finite) : 'Load term', rows ? number(rows.length - finite) : 'Load term'].map(value => element('td', {}, value))); return row;
+        }));
+        this.$('surveyCsvDownload').disabled = false;
+        const bins = (this.manifest.survey.opening_bins ?? []).filter(bin => Number.isFinite(bin.min) && Number.isFinite(bin.max));
+        this.$('baseGeometryBinNote').textContent = bins.length ? bins.map(bin => `${bin.label ?? bin.id}: ${bin.include_min ? '[' : '('}${bin.min}, ${bin.max}${bin.include_max ? ']' : ')'}°`).join(' · ') + ' These are descriptive bins, not RNA conformation thresholds.' : 'This release does not declare opening-bin boundaries; conditioned comparisons are unavailable.';
+      });
+      if (!this.current(revision)) return;
+      if (this.lastSurveyTerm && this.lastSurveyTerm !== term.id) this.repository.releaseSurvey?.('scalars', this.lastSurveyTerm);
+      this.lastSurveyTerm = term.id;
+      if (state.survey.ranking && this.current(revision)) await this.renderOpeningRanking(available, state, revision, openingIndex);
+    } catch (error) {
+      if (this.current(revision) && state.survey.ranking) this.setRankingCounts('unavailable');
+      throw error;
+    }
   }
 
   surveyTerms() {
@@ -736,10 +775,25 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     }
     return result;
   }
+  rankingCountValue(key) {
+    const counts = this.rankingCounts ?? { status: 'not_computed' };
+    return counts.status === 'computed' ? counts[key]
+      : { not_computed: 'Not computed', computing: 'Computing…', unavailable: 'Unavailable' }[counts.status];
+  }
+  setRankingCounts(status, ranks = []) {
+    this.rankingCounts = { status, rows: status === 'computed' ? ranks.length : null,
+      sufficient: status === 'computed' ? ranks.filter(rank => rank.sufficient).length : null };
+    if (!this.rankingCountsRendered) return;
+    for (const [id, key] of [['baseGeometryRankRows', 'rows'], ['baseGeometrySufficientRankRows', 'sufficient']]) {
+      const node = this.$(id), value = this.rankingCountValue(key);
+      if (node) node.textContent = typeof value === 'number' ? number(value) : value;
+    }
+  }
   async renderOpeningRanking(terms, state, revision, openingIndex) {
     if (!this.current(revision)) return;
     const owner = {};
     this.rankingOwner = owner;
+    this.setRankingCounts('computing');
     const ranks = []; this.$('surveyRankingLoad').disabled = true;
     const selectionKey = JSON.stringify({ ...state.selection, contexts: state.survey.contexts ?? [] });
     if (!this.rankingCache.has(selectionKey)) {
@@ -770,6 +824,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
         this.$('surveyRankingLoad').textContent = `Computing ${index + 1} / ${terms.length}…`;
       }
       await this.commit(revision, () => {
+        if (this.rankingOwner !== owner) return;
         const ordered = orderSurveyRanks(ranks, state.survey.minimum);
         this.surveyRanks = ordered;
         this.$('baseGeometryRankingBody').replaceChildren(...ordered.map(rank => {
@@ -790,7 +845,11 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
           row.append(label, ...[rank.context, rank.counts.join(' / '), ...display.means, display.difference, rank.trend, rank.sufficient ? 'All bins meet minimum' : 'Insufficient per-bin coverage'].map(value => element('td', {}, value))); return row;
         }));
         if (!ordered.length) { const row = element('tr'); row.append(element('td', { colspan: '9' }, 'No finite term/context observations in the selected opening bins.')); this.$('baseGeometryRankingBody').append(row); }
+        this.setRankingCounts('computed', ordered);
       });
+    } catch (error) {
+      if (this.current(revision) && this.rankingOwner === owner) this.setRankingCounts('unavailable');
+      throw error;
     } finally {
       if (this.rankingOwner === owner) {
         this.rankingOwner = null;

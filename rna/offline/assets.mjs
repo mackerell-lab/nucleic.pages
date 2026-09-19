@@ -11,6 +11,7 @@ import {BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle}
 import {BUNDLED_FAMILY_ENCODING, expandBundledFamilyColumns, verifyFamilyBundle} from '../core/bundled-family-codec.js';
 import {PACKED_COORDINATE_ENCODING, expandPackedCoordinates} from '../core/packed-coordinate-codec.js';
 import {PACKED_FAMILY_ENCODING, expandPackedFamily} from '../core/packed-family-codec.js';
+import {PACKED_SURVEY_ENCODING, expandPackedSurvey} from '../core/packed-survey-codec.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {backbone:'Backbone Torsions',pseudo_torsion:'Pseudo Torsions',sugar_torsion:'Sugar Torsions',
@@ -296,14 +297,14 @@ export async function validateRelease(manifestPath) {
     const payload = await readAsset(descriptor ?? {path: fixedPath}, {requireHash: Boolean(descriptor)});
     return (await verifyFamilyBundle(reference, payload)).bundle;
   };
-  const encodings = new Set([PACKED_FAMILY_ENCODING, BUNDLED_FAMILY_ENCODING, BUNDLED_SURVEY_ENCODING, SHARED_SURVEY_ENCODING, SURVEY_COLUMNAR_ENCODING,
+  const encodings = new Set([PACKED_FAMILY_ENCODING, BUNDLED_FAMILY_ENCODING, PACKED_SURVEY_ENCODING, BUNDLED_SURVEY_ENCODING, SHARED_SURVEY_ENCODING, SURVEY_COLUMNAR_ENCODING,
     PACKED_COORDINATE_ENCODING, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING]);
   const load = async descriptor => {
     const data = await readAsset(descriptor);
     if (descriptor.encoding !== undefined || encodings.has(data?.encoding)) {
       if (descriptor.encoding !== data?.encoding) throw new Error(`Asset encoding mismatch: ${descriptor.path}`);
       if (!encodings.has(descriptor.encoding)) throw new Error(`Unsupported asset encoding: ${descriptor.encoding}`);
-      if (fullRelease && data.build_id !== manifest.build_id) throw new Error(`Asset build ID mismatch: ${descriptor.path}`);
+      if ((fullRelease || descriptor.encoding === PACKED_SURVEY_ENCODING) && data.build_id !== manifest.build_id) throw new Error(`Asset build ID mismatch: ${descriptor.path}`);
     }
     if (descriptor.encoding === BUNDLED_FAMILY_ENCODING || descriptor.encoding === PACKED_FAMILY_ENCODING) {
       const bundled = descriptor.encoding === PACKED_FAMILY_ENCODING ? expandPackedFamily(data) : data;
@@ -313,8 +314,9 @@ export async function validateRelease(manifestPath) {
       });
       return decodeFamilyRows(expanded);
     }
-    if (descriptor.encoding === BUNDLED_SURVEY_ENCODING) {
-      const expanded = await expandBundledSurveyColumns(data, async reference => {
+    if (descriptor.encoding === BUNDLED_SURVEY_ENCODING || descriptor.encoding === PACKED_SURVEY_ENCODING) {
+      const expand = descriptor.encoding === PACKED_SURVEY_ENCODING ? expandPackedSurvey : expandBundledSurveyColumns;
+      const expanded = await expand(data, async reference => {
         usedBundles.add(reference);
         return readBundle(reference);
       });
@@ -400,7 +402,7 @@ export async function validateRelease(manifestPath) {
     const rows = await load(descriptor), ids = new Set();
     if (rows.length !== descriptor.row_count) errors.push(`Survey count: ${id}`);
     for (const row of rows) {
-      if (ids.has(row.id) || row.term_id !== id || !entryIds.has(row.pdb_id)) errors.push(`Survey identity: ${id}`);
+      if (typeof row.id !== 'string' || !row.id || ids.has(row.id) || row.term_id !== id || !entryIds.has(row.pdb_id)) errors.push(`Survey identity: ${id}`);
       ids.add(row.id);
       ownership(row,`survey/${id}`);endpoints(row,`survey/${id}`);
       if (row.residue_id && !residueIds.has(row.residue_id)) errors.push(`Survey residue key: ${id}`);

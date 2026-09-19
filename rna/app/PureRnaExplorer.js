@@ -398,7 +398,15 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const result = histogram2D(joined.points, xParameter, yParameter, { ...state.display, bins: state.display.fine ? 72 : 36 });
     const snapshot = this.snapshot({ result: { ...result, points: result.points ?? joined.points }, selectionSpec: state.selection, displaySpec: state.display, buildId: this.manifest.build_id, joinSpec: state.joint, provenance: { join_diagnostics: joined.diagnostics, axis_selections: { x: specs.left, y: specs.right } }, revision });
     await this.commit(revision, async () => {
-      const z = result.z?.map(row => Array.from(row, value => state.joint.colorScale === 'log' ? value > 0 ? Math.log10(value) : null : value)) ?? [];
+      // Match DNA's display floor; histogram intensities and hover remain raw.
+      const logFloor = 1e-8, logarithmic = state.joint.colorScale === 'log';
+      let maximum = 0;
+      const z = result.z?.map(row => Array.from(row, value => {
+        if (Number.isFinite(value) && value > maximum) maximum = value;
+        return logarithmic ? Math.log10(Math.max(value, logFloor)) : value;
+      })) ?? [];
+      const zmin = logarithmic ? Math.log10(logFloor) : 0;
+      const zmax = maximum > 0 ? logarithmic ? Math.log10(Math.max(maximum, logFloor)) : maximum : undefined;
       const customdata = result.z?.map((row, y) => Array.from(row, (value, x) => [
         result.x[x], xParameter.period ? wrapCircular(result.x[x], xParameter.period) : result.x[x],
         result.y[y], yParameter.period ? wrapCircular(result.y[y], yParameter.period) : result.y[y], value,
@@ -411,7 +419,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       };
       const intensityLabel = state.display.normalization === 'density' ? 'Probability density (smoothed)' : 'Probability (smoothed)';
       const hovertemplate = `${axisHover(xParameter, 0, 1)}<br>${axisHover(yParameter, 2, 3)}<br>${intensityLabel}: %{customdata[4]:.4g}<extra></extra>`;
-      const common = { x: Array.from(result.x ?? []), y: Array.from(result.y ?? []), z, customdata, hovertemplate, colorscale: jointColorscale(state.joint.palette), colorbar: { title: state.joint.colorScale === 'log' ? `log₁₀ ${state.display.normalization}` : state.display.normalization } };
+      const common = { x: Array.from(result.x ?? []), y: Array.from(result.y ?? []), z, zmin, zmax, customdata, hovertemplate, colorscale: jointColorscale(state.joint.palette), colorbar: { title: logarithmic ? `log₁₀ ${state.display.normalization}` : state.display.normalization } };
       const contour = { ...common, type: 'contour', ncontours: state.joint.contourCount, contours: { coloring: state.joint.type === 'filled_contour' ? 'fill' : 'none', showlabels: state.joint.labels }, showscale: state.joint.type !== 'heatmap_contour' };
       const traces = state.joint.type === 'heatmap' ? [{ ...common, type: 'heatmap' }] : state.joint.type === 'heatmap_contour' ? [{ ...common, type: 'heatmap' }, contour] : [contour];
       await this.plot(this.$('jointPlot'), traces, plotLayout(xParameter, state.display.normalization, { yaxis: { title: `${yParameter.label ?? yParameter.id}${yParameter.unit ? ` (${yParameter.unit})` : ''}` }, height: 530 }));
@@ -420,6 +428,7 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       const points = result.points ?? joined.points; const summary = result.statistics ?? {};
       stats(this.$('jointStats'), [['Matched observations', points.length, 'jointMatchedN'], ['Matched PDBs', new Set(points.map(point => entryId(point.left ?? point))).size, 'jointMatchedPdbs'], ['Pearson r', xParameter.period || yParameter.period ? 'Not applicable' : number(summary.r), 'jointPearsonR'], ['Circular corr.', xParameter.period && yParameter.period ? number(summary.r) : 'Not applicable', 'jointCircularR'], ['R²', xParameter.period || yParameter.period ? 'Not applicable' : number(summary.r2), 'jointRSquared']]);
       this.$('jointNote').textContent = state.joint.mode === 'relation' ? 'Endpoint observations retain pair, residue, and side identities. Residue context and pucker are independent joint filters; both endpoints are statistically related.' : 'Only identical observation IDs are matched; display labels and sequence text do not establish identity.';
+      if (logarithmic) this.$('jointNote').textContent += ' Log color uses a display floor of 10⁻⁸; hover retains the actual probability or density, including zero.';
       this.$('jointCsvDownload').disabled = false;
     });
   }

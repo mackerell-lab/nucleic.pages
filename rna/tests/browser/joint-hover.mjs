@@ -31,32 +31,47 @@ try {
           const app = window.rnaExplorer, result = app.snapshots.joint.result, plot = document.querySelector('#jointPlot');
           const pointsUnchanged = result.points.length === window.rnaHoverBaseline.length
             && result.points.every((point, index) => [point.left_id, point.right_id, point.x, point.y].every((value, field) => value === window.rnaHoverBaseline[index][field]));
-          let maximum = { value: -1, x: 0, y: 0 }, allValuesEqual = true;
+          let maximum = { value: -1, x: 0, y: 0 }, allValuesEqual = true, zero = null, zeroBins = 0, belowFloorBins = 0;
           for (let y = 0; y < result.y.length; y++) for (let x = 0; x < result.x.length; x++) {
             const value = result.z[y][x];
             if (value > maximum.value) maximum = { value, x, y };
+            if (value === 0) { zeroBins++; zero ??= { x, y }; }
+            else if (value < 1e-8) belowFloorBins++;
             for (const trace of plot.data) {
               const hover = trace.customdata?.[y]?.[x];
               if (!hover || hover[0] !== result.x[x] || hover[2] !== result.y[y] || hover[4] !== value) allValuesEqual = false;
+              const displayed = app.state.joint.colorScale === 'log' ? Math.log10(Math.max(value, 1e-8)) : value;
+              if (trace.z[y][x] !== displayed) allValuesEqual = false;
               if (result.xParameter.period && hover?.[1] !== ((result.x[x] % result.xParameter.period) + result.xParameter.period) % result.xParameter.period) allValuesEqual = false;
               if (result.yParameter.period && hover?.[3] !== ((result.y[y] % result.yParameter.period) + result.yParameter.period) % result.yParameter.period) allValuesEqual = false;
             }
           }
-          let hoverText = null;
+          const log = app.state.joint.colorScale === 'log';
+          const colorRangeCorrect = plot._fullData.every(trace => trace.zmin === (log ? -8 : 0)
+            && trace.zmax === (log ? Math.log10(Math.max(maximum.value, 1e-8)) : maximum.value));
+          let hoverText = null, zeroHoverText = null;
           if (app.state.joint.type === 'heatmap') {
             Plotly.Fx.hover(plot, [{ curveNumber: 0, xval: result.x[maximum.x], yval: result.y[maximum.y] }]);
             await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
             hoverText = plot.querySelector('.hoverlayer')?.textContent;
             Plotly.Fx.unhover(plot);
+            if (zero) {
+              Plotly.Fx.hover(plot, [{ curveNumber: 0, xval: result.x[zero.x], yval: result.y[zero.y] }]);
+              await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+              zeroHoverText = plot.querySelector('.hoverlayer')?.textContent;
+              Plotly.Fx.unhover(plot);
+            }
           }
           return { buildId: app.manifest.build_id, normalization: app.state.display.normalization, type: app.state.joint.type,
             scale: app.state.joint.colorScale, points: result.points.length, pointsUnchanged, allValuesEqual,
-            hoverTemplates: plot.data.map(trace => trace.hovertemplate), hoverText,
+            hoverTemplates: plot.data.map(trace => trace.hovertemplate), hoverText, zeroHoverText, zeroBins, belowFloorBins, colorRangeCorrect,
             peakIntensity: maximum.value, peakFormatted: maximum.value.toPrecision(4) };
         });
         assert(evidence.points > 0);
         assert(evidence.pointsUnchanged);
         assert(evidence.allValuesEqual, 'Hover fields disagree with untransformed histogram');
+        assert(evidence.colorRangeCorrect, 'Rendered color range differs from the DNA display floor');
+        assert(evidence.zeroBins > 0, 'Real histogram did not exercise zero bins');
         for (const template of evidence.hoverTemplates) {
           assert.match(template, /chi \(deg\)/);
           assert.match(template, /delta \(deg\)/);
@@ -65,6 +80,8 @@ try {
         if (type === 'heatmap') {
           assert.match(evidence.hoverText, normalization === 'density' ? /Probability density \(smoothed\)/ : /Probability \(smoothed\)/);
           assert(evidence.hoverText.includes(evidence.peakFormatted), `Rendered hover lost raw peak ${evidence.peakFormatted}: ${evidence.hoverText}`);
+          assert.match(evidence.zeroHoverText, /Probability(?: density)? \(smoothed\): 0(?:\.0+)?$/,
+            'Zero-bin hover must report actual zero, not the color floor');
         }
         report.checks.push({ passed: true, ...evidence });
       }

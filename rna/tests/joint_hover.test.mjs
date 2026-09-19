@@ -28,7 +28,7 @@ test('Joint hover preserves raw probability and density for every plot and color
       state.display.normalization = normalization;
       for (const type of ['heatmap', 'contour', 'filled_contour', 'heatmap_contour']) {
         state.joint.type = type;
-        for (const scale of ['linear', 'log']) {
+        for (const scale of ['log', 'linear']) {
           state.joint.colorScale = scale;
           await app.renderJoint(state, app.revision, { rows });
           const result = app.snapshots.joint.result;
@@ -48,11 +48,14 @@ test('Joint hover preserves raw probability and density for every plot and color
               assert.equal(angleX, ((result.x[x] % 360) + 360) % 360);
               assert.equal(viewY, result.y[y]); assert.equal(originalY, result.y[y]);
               assert.equal(intensity, result.z[y][x]);
-              assert.equal(trace.z[y][x], scale === 'log' ? intensity > 0 ? Math.log10(intensity) : null : intensity);
+              assert.equal(trace.z[y][x], scale === 'log' ? Math.log10(Math.max(intensity, 1e-8)) : intensity);
               if (intensity) { assert.equal(intensity, expectedMass); populated++; }
             }
+            assert.equal(trace.zmin, scale === 'log' ? -8 : 0);
+            assert.equal(trace.zmax, scale === 'log' ? Math.log10(Math.max(expectedMass, 1e-8)) : expectedMass);
           }
           assert.equal(populated, 2 * traces.length);
+          if (scale === 'log') assert.match(nodes.get('#jointNote').textContent, /display floor of 10⁻⁸/);
         }
       }
     }

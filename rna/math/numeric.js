@@ -50,7 +50,9 @@ export function summary(values, { period = null, weights = null } = {}) {
     if (period) { sin += weight * Math.sin(value * 2 * Math.PI / period); cos += weight * Math.cos(value * 2 * Math.PI / period); }
   }
   const result = { n, totalWeight: sumWeight, mean: n ? mean : null, std: n ? Math.sqrt(Math.max(0, moment / sumWeight)) : null,
-    p05: weights ? null : quantile(values.filter(Number.isFinite), 0.05), p95: weights ? null : quantile(values.filter(Number.isFinite), 0.95),
+    // Circular percentiles are undefined below; avoid sorting values only to
+    // discard both results for every torsion distribution and correlation.
+    p05: weights || period ? null : quantile(values.filter(Number.isFinite), 0.05), p95: weights || period ? null : quantile(values.filter(Number.isFinite), 0.95),
     quantilePolicy: weights ? 'not_computed_for_weighted_series' : 'raw_linear_interpolation_type_7' };
   if (period) {
     const resultant = n ? Math.min(1, Math.hypot(sin, cos) / sumWeight) : null;

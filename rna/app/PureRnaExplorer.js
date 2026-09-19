@@ -184,8 +184,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       this.updateSelectors(); this.requestRender();
     });
     this.listen(this.$('parameterSelect'), 'change', event => { this.state.parameterId = event.target.value; this.updateSelectors(); this.requestRender(); });
-    this.listen(this.$('family2Select'), 'change', event => { this.state.family2Id = event.target.value; this.state.parameter2Id = ''; this.updateSelectors(); this.requestRender(); });
-    this.listen(this.$('parameter2Select'), 'change', event => { this.state.parameter2Id = event.target.value; this.requestRender(); });
+    this.listen(this.$('family2Select'), 'change', event => { this.state.family2Id = event.target.value; this.state.parameter2Id = ''; this.updateSelectors(); this.requestJointOnly(); });
+    this.listen(this.$('parameter2Select'), 'change', event => { this.state.parameter2Id = event.target.value; this.requestJointOnly(); });
     for (const [id, key] of [['filteredCsvDownload', 'distribution'], ['jointCsvDownload', 'joint'], ['surveyCsvDownload', 'survey']]) this.listen(this.$(id), 'click', () => this.exportSnapshot(key));
     this.listen(this.$('plotProvenanceDownload'), 'click', () => { if (this.snapshots.distribution) download(`pure-rna-${this.manifest.build_id}-provenance.json`, provenance(this.snapshots.distribution), 'application/json'); });
     this.listen(this.$('baseGeometryLoad'), 'click', async () => { this.state.survey.loaded = true; this.$('baseGeometryBody').hidden = false; await this.requestRender(); });
@@ -574,7 +574,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     if (this.fullRenderOwner || !this.fullRenderComplete) return this.requestRender();
     const request = this.capture();
     const traceStateCurrent = this.completedTraceState && this.completedTraceKey
-      === this.traceAnalysisKey({ ...request.state, joint: this.completedTraceState.joint });
+      === this.traceAnalysisKey({ ...request.state, joint: this.completedTraceState.joint,
+        family2Id: this.completedTraceState.family2Id, parameter2Id: this.completedTraceState.parameter2Id });
     this.status('Updating RNA joint measurements…');
     this.$('jointCsvDownload').disabled = true;
     try {

@@ -105,3 +105,59 @@ test('Style rendering drains coordinate labels changed while Plotly is pending',
   await app.setCoordinateLabels('none'); finish.resolve(); await pending;
   assert.equal(app.completedCoordinateLabels, 'none'); assert.equal(app.$('appStatus').dataset.state, 'ready');
 });
+
+async function secondarySetup() {
+  const fixture = setup(), { app } = fixture;
+  app.state.survey.loaded = true; app.metadata = { entries: [] };
+  app.repository.loadFamily = async () => [];
+  app.renderJoint = async (state, revision) => {
+    if (!app.current(revision)) return;
+    app.snapshots.joint = createPlotSnapshot({ result: { kind: 'joint', points: [], z: [[1]], yParameter: { id: state.parameter2Id } }, displaySpec: state.display, joinSpec: state.joint });
+    app.completedJointKey = app.jointAnalysisKey(state);
+    app.$('jointCsvDownload').disabled = false;
+  };
+  await app.requestRender(); return fixture;
+}
+
+test('Completed secondary family and parameter selectors preserve subsequent trace reuse', async () => {
+  const { app, renders } = await secondarySetup();
+  const main = app.snapshots.distribution.result.series, survey = app.snapshots.survey.result.series;
+  for (const [family2Id, parameter2Id] of [['backbone', 'alpha'], ['backbone', 'beta'], ['sugar', 'delta'], ['', '']]) {
+    app.state.family2Id = family2Id; app.state.parameter2Id = parameter2Id;
+    await app.requestJointOnly(); const revision = app.revision, joint = app.snapshots.joint.result;
+    assert.equal(app.completedTraceKey, app.traceAnalysisKey(app.state));
+    await app.setDisplay({ traceStyle: app.state.display.traceStyle === 'filled' ? 'line' : 'filled' });
+    assert.equal(app.revision, revision + 1); assert.equal(renders(), 1);
+    assert.equal(app.snapshots.distribution.result.series, main); assert.equal(app.snapshots.survey.result.series, survey);
+    assert.equal(app.snapshots.joint.result.points, joint.points); assert.equal(app.snapshots.joint.result.z, joint.z);
+  }
+});
+
+test('Secondary completion never certifies changed global, primary, Survey or release state', async () => {
+  for (const mutate of [a => { a.state.selection.contexts = ['U']; }, a => { a.state.familyId = 'other'; },
+    a => { a.state.parameterId = 'other'; }, a => { a.state.display.sigma = 0; },
+    a => { a.state.survey.termId = 'other'; }, a => { a.state.survey.contexts = ['C']; },
+    a => { a.manifest.build_id = 'new'; }, a => { a.repository.releaseUrl = 'new'; }, a => { a.state.futureField = 1; }]) {
+    const { app, renders } = await secondarySetup(); const completed = app.completedTraceKey;
+    app.state.family2Id = 'backbone'; app.state.parameter2Id = 'alpha'; mutate(app);
+    await app.requestJointOnly(); assert.equal(app.completedTraceKey, completed);
+    await app.setDisplay({ traceStyle: 'line' }); assert.equal(renders(), 2);
+  }
+});
+
+test('Failed and superseded secondary requests cannot advance trace completion marker', async t => {
+  t.mock.method(console, 'error', () => {});
+  const { app, renders } = await secondarySetup(); const initial = app.completedTraceKey;
+  app.state.family2Id = 'backbone'; app.state.parameter2Id = 'alpha';
+  app.repository.loadFamily = async () => { throw Error('Injected secondary load failure'); };
+  await app.requestJointOnly(); assert.equal(app.completedTraceKey, initial); assert.equal(app.$('appStatus').dataset.state, 'error');
+  await app.setDisplay({ traceStyle: 'line' }); assert.equal(renders(), 2);
+  const current = app.completedTraceKey, gates = [];
+  app.repository.loadFamily = () => { const gate = deferred(); gates.push(gate); return gate.promise; };
+  app.state.parameter2Id = 'beta'; const first = app.requestJointOnly();
+  app.state.parameter2Id = 'delta'; const second = app.requestJointOnly();
+  gates[0].resolve([]); await first; assert.equal(app.completedTraceKey, current); assert.equal(app.$('appStatus').dataset.state, 'loading');
+  gates[1].resolve([]); await second;
+  assert.equal(app.completedTraceState.parameter2Id, 'delta'); assert.equal(app.completedTraceKey, app.traceAnalysisKey(app.state));
+  await app.setDisplay({ traceStyle: 'filled' }); assert.equal(renders(), 2);
+});

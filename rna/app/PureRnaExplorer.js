@@ -433,7 +433,17 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     if (grouping) {
       const items = [['base', 'Sequence context'], ['method', 'Method'], ['function', 'Function'], ['structure', 'Structure tag'], ['none', 'All observations']];
       if (isPair) items.splice(1, 0, ['interactionFamily', 'Interaction family']);
-      const temporary = element('div'); control(temporary, { id: 'groupingGroup', title: 'Group Curves By', choices: choices(items), selected: state.display.groupBy, onChange: groupBy => this.setDisplay({ groupBy }) });
+      const temporary = element('div'); const renderedGrouping = control(temporary, { id: 'groupingGroup', title: 'Group Curves By', choices: choices(items), selected: state.display.groupBy, onChange: groupBy => {
+        if (!renderedGrouping.isConnected) return;
+        if (groupBy === 'interactionFamily' && this.state.familyId !== state.familyId) {
+          for (const button of renderedGrouping.querySelectorAll('button')) {
+            const active = button.dataset.value === this.state.display.groupBy;
+            button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active));
+          }
+          return;
+        }
+        this.setDisplay({ groupBy });
+      } });
       grouping.replaceWith(temporary.firstChild);
     }
   }

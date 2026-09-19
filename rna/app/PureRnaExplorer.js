@@ -8,7 +8,7 @@ import { jointOptions } from '../core/joint-options.js';
 import { jointAnalysisKey } from '../core/joint-analysis-key.js';
 import { rankSurveyContexts, orderSurveyRanks, surveyContext } from '../core/survey-ranking.js';
 import { CoordinateSummary } from '../core/coordinates.js';
-import { csv, createPlotSnapshot, provenance, restyleJointSnapshot } from '../core/export.js';
+import { csv, createPlotSnapshot, provenance, restyleJointSnapshot, restyleTraceSnapshot } from '../core/export.js';
 import { cards, control, distributionTraces, download, element, entryId, labels, number, options, plotLayout, stats, summaryCards, tableRows } from '../views/panels.js';
 import { annotationLabel } from '../views/labels.js';
 import { JOINT_PALETTE_OPTIONS, jointColorscale } from '../views/palettes.js';
@@ -291,6 +291,59 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
       provenance: { source: this.manifest.source ?? this.manifest.sources, policy: this.manifest.policy, registry_version: this.manifest.registry_version, release_url: this.repository.releaseUrl, ...(options.provenance ?? {}) } });
   }
   decorate(result) { for (const series of result.series ?? []) series.label = annotationLabel(series.label ?? series.key); return result; }
+
+  traceAnalysisKey(state) {
+    const { traceStyle, ...display } = state.display;
+    return JSON.stringify({ build: this.manifest?.build_id, release: this.repository.releaseUrl,
+      ...state, display });
+  }
+
+  setDisplay(patch) {
+    this.state.display = { ...this.state.display, ...structuredClone(patch) };
+    return Object.keys(patch).length === 1 && Object.hasOwn(patch, 'traceStyle')
+      ? this.requestTraceStyleOnly() : this.requestRender();
+  }
+
+  async requestTraceStyleOnly() {
+    if (this.fullRenderOwner || !this.fullRenderComplete || this.$('appStatus').dataset.state !== 'ready'
+        || !this.completedTraceState || this.completedTraceKey !== this.traceAnalysisKey(this.state)
+        || !this.snapshots.distribution || (this.state.survey.loaded && !this.snapshots.survey)) return this.requestRender();
+    const request = this.capture();
+    this.fullRenderComplete = false;
+    this.status('Updating RNA curve style…');
+    const buttons = ['filteredCsvDownload', 'plotProvenanceDownload', 'jointCsvDownload', 'surveyCsvDownload'];
+    for (const id of buttons) this.$(id).disabled = true;
+    try {
+      const updated = {};
+      for (const key of ['distribution', 'survey', 'joint']) {
+        if (key === 'survey' && !request.state.survey.loaded) continue;
+        if (this.snapshots[key]) updated[key] = restyleTraceSnapshot(this.snapshots[key], request.state.display.traceStyle);
+      }
+      await this.commit(request.revision, async () => {
+        for (const [key, id] of [['distribution', 'plot'], ['survey', 'baseGeometryPlot']]) {
+          const snapshot = updated[key]; if (!snapshot) continue;
+          await this.plot(this.$(id), distributionTraces(snapshot.result, snapshot.display_spec),
+            plotLayout(snapshot.result.parameter, snapshot.display_spec.normalization));
+          if (!this.current(request.revision)) return;
+        }
+        // A label choice during Plotly work must finish before reporting ready.
+        if (this.completedCoordinateKey && this.completedCoordinateLabels !== this.state.survey.coordinateLabels) {
+          await this.renderCoordinatePlot(this.coordinateSummary, request.revision, this.completedCoordinateKey);
+          if (!this.current(request.revision)) return;
+        }
+        Object.assign(this.snapshots, updated);
+        if (updated.joint) this.completedJointKey = this.jointAnalysisKey(request.state);
+        this.$('filteredCsvDownload').disabled = false; this.$('plotProvenanceDownload').disabled = false;
+        this.$('jointCsvDownload').disabled = !updated.joint; this.$('surveyCsvDownload').disabled = !updated.survey;
+        this.completedTraceState = structuredClone(this.state);
+        this.completedTraceKey = this.traceAnalysisKey(this.state);
+        this.fullRenderComplete = true;
+        this.status('', 'ready');
+      });
+    } catch (error) {
+      if (this.current(request.revision)) { this.status(error.message, 'error'); console.error(error); }
+    }
+  }
   async render(request) {
     const { revision, state } = request;
     this.status('Updating RNA measurements…');
@@ -490,7 +543,11 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     const request = this.capture();
     try {
       await this.render(request);
-      if (this.current(request.revision)) this.fullRenderComplete = true;
+      if (this.current(request.revision)) {
+        this.fullRenderComplete = true;
+        this.completedTraceState = structuredClone(this.state);
+        this.completedTraceKey = this.traceAnalysisKey(this.state);
+      }
     } catch (error) {
       if (this.current(request.revision)) { this.status(error.message, 'error'); console.error(error); }
     } finally { if (this.fullRenderOwner === owner) this.fullRenderOwner = null; }
@@ -501,6 +558,8 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
     // panels before allowing a joint-only refresh to declare the page ready.
     if (this.fullRenderOwner || !this.fullRenderComplete) return this.requestRender();
     const request = this.capture();
+    const traceStateCurrent = this.completedTraceState && this.completedTraceKey
+      === this.traceAnalysisKey({ ...request.state, joint: this.completedTraceState.joint });
     this.status('Updating RNA joint measurements…');
     this.$('jointCsvDownload').disabled = true;
     try {
@@ -518,7 +577,13 @@ export class PureRnaExplorer extends NucleicAcidExplorer {
           && this.completedCoordinateLabels !== this.state.survey.coordinateLabels) {
         await this.commit(request.revision, () => this.renderCoordinatePlot(this.coordinateSummary, request.revision, this.completedCoordinateKey));
       }
-      if (this.current(request.revision)) this.status('', 'ready');
+      if (this.current(request.revision)) {
+        if (traceStateCurrent) {
+          this.completedTraceState = structuredClone(this.state);
+          this.completedTraceKey = this.traceAnalysisKey(this.state);
+        }
+        this.status('', 'ready');
+      }
     } catch (error) {
       if (this.current(request.revision)) { this.status(error.message, 'error'); console.error(error); }
     }

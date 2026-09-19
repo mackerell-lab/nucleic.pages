@@ -58,6 +58,20 @@ export function restyleJointSnapshot(previous, joint) {
   return snapshot;
 }
 
+/** Change only trace presentation; retain the already frozen scientific graph. */
+export function restyleTraceSnapshot(previous, traceStyle) {
+  if (!createdSnapshots.has(previous) || !['filled', 'line'].includes(traceStyle)) {
+    throw new TypeError('Trace display reuse requires an owned frozen snapshot and valid style');
+  }
+  const display = Object.freeze({ ...previous.display_spec, traceStyle });
+  const resultDisplay = Object.freeze({ ...(previous.result.displaySpec ?? previous.display_spec), traceStyle });
+  const result = Object.freeze({ ...previous.result, displaySpec: resultDisplay });
+  const snapshot = Object.freeze({ ...previous, snapshot_id: snapshotId(),
+    created_at: new Date().toISOString(), display_spec: display, result });
+  createdSnapshots.add(snapshot);
+  return snapshot;
+}
+
 function escapeCsv(value) {
   if (value === null || value === undefined) return '';
   const string = typeof value === 'object' ? JSON.stringify(value) : String(value);

@@ -1,5 +1,6 @@
 import { decodeCoordinateRows, decodeFamilyRows, decodeInteractionRows, decodeSurveyRows, COORDINATE_COLUMNAR_ENCODING, FAMILY_COLUMNAR_ENCODING, INTERACTION_COLUMNAR_ENCODING, SURVEY_COLUMNAR_ENCODING } from './survey-codec.js';
 import { SHARED_SURVEY_ENCODING, expandSharedSurveyColumns, verifySharedColumn } from './shared-survey-codec.js';
+import { BUNDLED_SURVEY_ENCODING, expandBundledSurveyColumns, verifySurveyBundle } from './bundled-survey-codec.js';
 
 /** A session pins one immutable RNA release; rejected requests can be retried. */
 const immutableData = new WeakSet();
@@ -30,9 +31,10 @@ export function deepFreeze(value, seen = new WeakSet()) {
 }
 
 export class RnaDataRepository {
-  constructor({ manifestUrl, fetchImpl = globalThis.fetch, maxCachedFamilies = 3 } = {}) {
+  constructor({ manifestUrl, fetchImpl = globalThis.fetch, maxCachedFamilies = 3, maxBundleCacheBytes = 32 * 1024 * 1024 } = {}) {
     if (!manifestUrl) throw new Error('manifestUrl is required');
     if (!Number.isInteger(maxCachedFamilies) || maxCachedFamilies < 1) throw new Error('maxCachedFamilies must be a positive integer');
+    if (!Number.isSafeInteger(maxBundleCacheBytes) || maxBundleCacheBytes < 0) throw new Error('maxBundleCacheBytes must be a nonnegative safe integer');
     this.manifestUrl = new URL(manifestUrl, globalThis.location?.href || 'http://localhost/').href;
     this.releaseUrl = this.manifestUrl;
     this.fetchImpl = fetchImpl.bind(globalThis);
@@ -40,6 +42,11 @@ export class RnaDataRepository {
     this.coordinateRequests = new Map();
     this.maxCachedFamilies = maxCachedFamilies;
     this.resolvedFamilies = new Map();
+    // Serialized-byte accounting is a cache policy, not a JavaScript heap cap.
+    this.maxBundleCacheBytes = maxBundleCacheBytes;
+    this.bundleCacheBytes = 0;
+    this.bundleCache = new Map();
+    this.bundleRequests = new Map();
   }
 
   touchFamily(key, promise) {
@@ -146,6 +153,9 @@ export class RnaDataRepository {
       if (!descriptor?.path) throw new Error(`RNA survey partition is unavailable: ${kind}/${partition}`);
       let data = await this.readJson(new URL(descriptor.path, this.releaseUrl).href);
       if (data.build_id && data.build_id !== manifest.build_id) throw new Error(`Cross-build RNA survey: ${kind}`);
+      if (kind === 'scalars' && data.encoding === BUNDLED_SURVEY_ENCODING) {
+        data = await expandBundledSurveyColumns(data, reference => this.loadSurveyBundle(reference));
+      }
       if (kind === 'scalars' && data.encoding === SHARED_SURVEY_ENCODING) {
         data = await expandSharedSurveyColumns(data, async reference => {
           if (!/^[a-f0-9]{64}$/.test(reference)) throw new Error('Invalid shared Survey content hash');
@@ -163,6 +173,37 @@ export class RnaDataRepository {
     });
   }
   loadSurveyScalars(termId = null, options = {}) { return this.loadSurvey('scalars', termId, options); }
+  loadSurveyBundle(reference) {
+    if (!/^[a-f0-9]{64}$/.test(reference)) return Promise.reject(new Error('Invalid Survey bundle content hash'));
+    if (this.bundleCache.has(reference)) {
+      const cached = this.bundleCache.get(reference);
+      this.bundleCache.delete(reference); this.bundleCache.set(reference, cached);
+      return Promise.resolve(cached.bundle);
+    }
+    if (!this.bundleRequests.has(reference)) {
+      const request = (async () => {
+        await this.loadManifest();
+        const payload = await this.readJson(new URL(`survey/bundles/${reference}.json.gz`, this.releaseUrl).href);
+        const verified = await verifySurveyBundle(reference, payload);
+        deepFreeze(verified.bundle);
+        if (verified.byteLength <= this.maxBundleCacheBytes) {
+          while (this.bundleCacheBytes + verified.byteLength > this.maxBundleCacheBytes) {
+            const oldest = this.bundleCache.keys().next().value;
+            this.bundleCacheBytes -= this.bundleCache.get(oldest).byteLength;
+            this.bundleCache.delete(oldest);
+          }
+          this.bundleCache.set(reference, verified);
+          this.bundleCacheBytes += verified.byteLength;
+        }
+        return verified.bundle;
+      })();
+      this.bundleRequests.set(reference, request);
+      request.finally(() => {
+        if (this.bundleRequests.get(reference) === request) this.bundleRequests.delete(reference);
+      }).catch(() => {});
+    }
+    return this.bundleRequests.get(reference);
+  }
   async *iterateSurveyCoordinates(groupKey, { entryIds = null, signal } = {}) {
     const manifest = await this.loadManifest();
     const survey = manifest.survey?.coordinates;
